@@ -9,6 +9,7 @@ try:
 except ImportError:  # pragma: no cover
     orjson = None  # type: ignore
 
+from core.dedupe import dedupe_documents, dedupe_records
 from core.factura_index import FacturaIndex, FacturaMetadata, normalize_num_factura
 from core.fev_xml import find_companion_xml, parse_fev_xml
 from core.json_extract import (
@@ -34,21 +35,37 @@ def load_json_file(path: Path) -> tuple[Any | None, str | None]:
         return None, f"{path.name}: JSON inválido ({exc})"
 
 
-def discover_json_paths(paths: list[str]) -> list[Path]:
+from core.factura_index import is_rips_payload
+from models.relation_record import RelationRecord
+
+
+def is_rips_json_file(path: Path) -> bool:
+    data, err = load_json_file(path)
+    return not err and isinstance(data, dict) and is_rips_payload(data)
+
+
+def discover_json_paths(paths: list[str], *, rips_only: bool = True) -> list[Path]:
     result: list[Path] = []
     seen: set[Path] = set()
     for p in paths:
         path = Path(p)
         if path.is_dir():
             for child in sorted(path.glob("*.json")):
-                if child.resolve() not in seen:
-                    seen.add(child.resolve())
-                    result.append(child)
+                resolved = child.resolve()
+                if resolved in seen:
+                    continue
+                if rips_only and not is_rips_json_file(child):
+                    continue
+                seen.add(resolved)
+                result.append(child)
         elif path.is_file() and path.suffix.lower() == ".json":
             resolved = path.resolve()
-            if resolved not in seen:
-                seen.add(resolved)
-                result.append(path)
+            if resolved in seen:
+                continue
+            if rips_only and not is_rips_json_file(path):
+                continue
+            seen.add(resolved)
+            result.append(path)
     return result
 
 
@@ -235,4 +252,5 @@ def reload_records_with_facturas(
         recs = build_records_from_rips(data, source, jp, factura_index)
         all_records.extend(recs)
         new_docs.append((source, data, recs))
+    all_records, _ = dedupe_records(all_records)
     return all_records, new_docs

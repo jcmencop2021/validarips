@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.dedupe import dedupe_documents, dedupe_records
 from core.excel_export import ensure_template, export_to_excel
 from core.factura_index import FacturaIndex
 from core.loader import (
@@ -50,6 +51,7 @@ class MainWindow(QMainWindow):
 
         self._last_folder = ""
         self.factura_index = FacturaIndex()
+        self._ingested_factura_files: set[str] = set()
         self._json_path_by_source: dict[str, Path] = {}
         self.records: list[RelationRecord] = []
         self.documents: list[tuple[str, dict, list[RelationRecord]]] = []
@@ -195,7 +197,16 @@ class MainWindow(QMainWindow):
         selected = dialog.selected_paths()
         if not selected:
             return
-        self.factura_index.ingest_paths(selected)
+        new_files = [p for p in selected if p not in self._ingested_factura_files]
+        if not new_files:
+            QMessageBox.information(
+                self,
+                "Sin archivos nuevos",
+                "Esos archivos de factura ya estaban cargados.",
+            )
+            return
+        self.factura_index.ingest_paths(new_files)
+        self._ingested_factura_files.update(new_files)
         self._apply_factura_index_to_grid()
         QMessageBox.information(
             self,
@@ -226,6 +237,7 @@ class MainWindow(QMainWindow):
         self.documents.clear()
         self._json_path_by_source.clear()
         self.loaded_files = json_paths
+        skipped_dupes = 0
 
         directories = {jp.parent for jp in json_paths}
         self.factura_index.scan_directories(directories)
@@ -233,6 +245,9 @@ class MainWindow(QMainWindow):
         for jp in json_paths:
             data, err = load_json_file(jp)
             source = jp.name
+            if source in self._json_path_by_source:
+                skipped_dupes += 1
+                continue
             self._json_path_by_source[source] = jp
             if err or not isinstance(data, dict):
                 self.documents.append((source, {}, []))
@@ -240,6 +255,11 @@ class MainWindow(QMainWindow):
             recs = build_records_from_rips(data, source, jp, self.factura_index)
             self.records.extend(recs)
             self.documents.append((source, data, recs))
+
+        self.records, skipped_rows = dedupe_records(self.records)
+        skipped_dupes += skipped_rows
+        self.documents, skipped_docs = dedupe_documents(self.documents)
+        skipped_dupes += skipped_docs
 
         self.validation_report = None
         self.lbl_resultado.setText("Resultado RIPS: — (pendiente validar)")
@@ -251,7 +271,9 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "Carga completada",
-            f"Archivos cargados: {len(json_paths)}\nRegistros en grilla: {len(self.records)}",
+            f"Archivos RIPS cargados: {len(self._json_path_by_source)}\n"
+            f"Registros en grilla: {len(self.records)}"
+            + (f"\nDuplicados omitidos: {skipped_dupes}" if skipped_dupes else ""),
         )
 
     def _refresh_table(self) -> None:
@@ -389,7 +411,7 @@ class MainWindow(QMainWindow):
         self.lbl_export.setText(f"Marcados Excel: {marked}")
 
     def on_exportar(self) -> None:
-        selected = [r for r in self.records if r.export_selected]
+        selected, _ = dedupe_records([r for r in self.records if r.export_selected])
         if not selected:
             QMessageBox.warning(
                 self,

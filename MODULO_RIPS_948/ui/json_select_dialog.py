@@ -14,6 +14,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from core.factura_index import is_rips_payload
+from core.loader import load_json_file
+
 
 class JsonSelectDialog(QDialog):
     """Lista los .json de una carpeta para que el usuario elija cuáles cargar."""
@@ -23,7 +26,12 @@ class JsonSelectDialog(QDialog):
         self.setWindowTitle("Seleccionar archivos RIPS JSON")
         self.resize(520, 420)
         self._folder = folder
-        self._paths: list[Path] = sorted(folder.glob("*.json"))
+        self._paths: list[Path] = []
+        for path in sorted(folder.glob("*.json")):
+            data, err = load_json_file(path)
+            if err or not isinstance(data, dict) or not is_rips_payload(data):
+                continue
+            self._paths.append(path)
 
         layout = QVBoxLayout(self)
         layout.addWidget(
@@ -48,7 +56,7 @@ class JsonSelectDialog(QDialog):
         layout.addWidget(self.list_widget)
 
         if not self._paths:
-            layout.addWidget(QLabel("No hay archivos .json en esta carpeta."))
+            layout.addWidget(QLabel("No hay archivos RIPS (.json con usuarios) en esta carpeta."))
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
