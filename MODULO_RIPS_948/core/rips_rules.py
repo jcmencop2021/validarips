@@ -76,17 +76,19 @@ USUARIO_REQUIRED = (
     "servicios",
 )
 
-# Campos opcionales en raíz que pueden traer nombre IPS o fecha de factura (si el emisor los incluye)
-NOMBRE_IPS_JSON_KEYS = (
+# Campos opcionales en paquetes integradores (no forman parte del objeto transacción T01–T04)
+NOMBRE_IPS_JSON_KEYS: tuple[str, ...] = (
     "nombrePrestador",
     "nomPrestador",
+    "razonSocial",
+    "razon_social",
     "nombreIPS",
     "nombreIps",
-    "razonSocial",
 )
 
-FECHA_FACTURA_JSON_KEYS = (
+FECHA_FACTURA_JSON_KEYS: tuple[str, ...] = (
     "fechaFactura",
-    "fechaInicioFactura",
-    "fechaGeneracionFactura",
+    "fechaEmision",
+    "fecha_documento",
+    "fechaDocumento",
 )

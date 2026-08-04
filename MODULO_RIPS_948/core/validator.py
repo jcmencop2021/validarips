@@ -324,6 +324,30 @@ def validate_rips_document(
                     "No fue posible determinar NroFac para un registro de relación.",
                 )
             )
+        if not rec.values.get("Fecha factura"):
+            messages.append(
+                ValidationMessage(
+                    Severity.ADVERTENCIA,
+                    source,
+                    "Fecha factura no encontrada en JSON ni en XML FEV asociado (cruce Res. 948).",
+                )
+            )
+        if not rec.values.get("NombreIps"):
+            messages.append(
+                ValidationMessage(
+                    Severity.ADVERTENCIA,
+                    source,
+                    "Nombre IPS no encontrado en JSON ni en XML FEV del prestador.",
+                )
+            )
+        if not rec.values.get("Nombre"):
+            messages.append(
+                ValidationMessage(
+                    Severity.ADVERTENCIA,
+                    source,
+                    f"Nombre del paciente no informado en usuario (NumIde {rec.values.get('NumIde')}).",
+                )
+            )
 
     ok_for_file = not any(m.severity == Severity.ERROR for m in messages)
     if ok_for_file and not any(m.severity == Severity.OK for m in messages):

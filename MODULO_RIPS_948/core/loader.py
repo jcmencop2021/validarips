@@ -9,7 +9,13 @@ try:
 except ImportError:  # pragma: no cover
     orjson = None  # type: ignore
 
-from core.rips_rules import FECHA_FACTURA_JSON_KEYS, NOMBRE_IPS_JSON_KEYS
+from core.fev_xml import find_companion_xml, parse_fev_xml
+from core.json_extract import (
+    extract_fecha_factura,
+    extract_nombre_ips,
+    extract_nombre_paciente,
+    unwrap_rips_root,
+)
 from models.relation_record import RelationRecord
 
 
@@ -58,14 +64,6 @@ def _parse_service_date(value: str | None) -> str:
     return value.split(" ")[0].strip()
 
 
-def _first_json_string(data: dict[str, Any], keys: tuple[str, ...]) -> str:
-    for key in keys:
-        val = data.get(key)
-        if val not in (None, ""):
-            return str(val).strip()
-    return ""
-
-
 def _collect_user_metrics(
     usuario: dict[str, Any],
 ) -> tuple[str, str, str | None, float, int]:
@@ -107,15 +105,35 @@ def _collect_user_metrics(
     return feching, fechfin, cod_ips, total, count
 
 
-def build_records_from_rips(data: dict[str, Any], source_file: str) -> list[RelationRecord]:
-    num_factura = str(data.get("numFactura") or "")
-    nit = str(data.get("numDocumentoIdObligado") or "")
-    nombre_ips = _first_json_string(data, NOMBRE_IPS_JSON_KEYS)
-    fecha_factura = _first_json_string(data, FECHA_FACTURA_JSON_KEYS)
-    if fecha_factura and " " in fecha_factura:
-        fecha_factura = fecha_factura.split(" ")[0]
+def _load_sidecar_metadata(json_path: Path) -> dict[str, str]:
+    meta: dict[str, str] = {}
+    xml_path = find_companion_xml(json_path)
+    if xml_path:
+        meta.update(parse_fev_xml(xml_path))
+    return meta
 
-    usuarios = data.get("usuarios") or []
+
+def build_records_from_rips(
+    data: dict[str, Any],
+    source_file: str,
+    json_path: Path | None = None,
+) -> list[RelationRecord]:
+    full_doc = data
+    rips = unwrap_rips_root(data)
+    if not isinstance(rips, dict):
+        rips = {}
+
+    sidecar: dict[str, str] = {}
+    if json_path is not None:
+        sidecar = _load_sidecar_metadata(json_path)
+
+    num_factura = str(rips.get("numFactura") or full_doc.get("numFactura") or "")
+    nit = str(rips.get("numDocumentoIdObligado") or full_doc.get("numDocumentoIdObligado") or "")
+
+    fecha_factura = extract_fecha_factura(full_doc, rips) or sidecar.get("fecha_factura", "")
+    nombre_ips = extract_nombre_ips(full_doc, rips) or sidecar.get("nombre_ips", "")
+
+    usuarios = rips.get("usuarios") or []
     records: list[RelationRecord] = []
 
     if not isinstance(usuarios, list) or not usuarios:
@@ -131,6 +149,8 @@ def build_records_from_rips(data: dict[str, Any], source_file: str) -> list[Rela
             continue
         feching, fechfin, cod_ips, total, count = _collect_user_metrics(usuario)
         cod_ips_str = str(cod_ips or "")
+        nombre_paciente = extract_nombre_paciente(usuario)
+
         rec = RelationRecord(source_file=source_file, num_documento_obligado=nit)
         rec.values.update(
             {
@@ -141,7 +161,7 @@ def build_records_from_rips(data: dict[str, Any], source_file: str) -> list[Rela
                 "NroFac": num_factura,
                 "TipoIde": usuario.get("tipoDocumentoIdentificacion") or "",
                 "NumIde": usuario.get("numDocumentoIdentificacion") or "",
-                "Nombre": "",
+                "Nombre": nombre_paciente,
                 "VlorNeto": total if total else "",
                 "SERVICIO": count if count else "",
                 "NACION": usuario.get("codPaisOrigen")

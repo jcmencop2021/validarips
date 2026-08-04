@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
             if err or not isinstance(data, dict):
                 self.documents.append((source, {}, []))
                 continue
-            recs = build_records_from_rips(data, source)
+            recs = build_records_from_rips(data, source, jp)
             self.records.extend(recs)
             self.documents.append((source, data, recs))
 
