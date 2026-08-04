@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -25,9 +24,16 @@ from PySide6.QtWidgets import (
 )
 
 from core.excel_export import ensure_template, export_to_excel
-from core.loader import build_records_from_rips, discover_json_paths, load_json_file
+from core.factura_index import FacturaIndex
+from core.loader import (
+    build_records_from_rips,
+    discover_json_paths,
+    load_json_file,
+    reload_records_with_facturas,
+)
 from core.validator import ValidationReport, validate_all
 from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecord
+from ui.factura_select_dialog import FacturaSelectDialog
 from ui.json_select_dialog import JsonSelectDialog
 
 APP_ROOT = Path(__file__).resolve().parent.parent
@@ -43,6 +49,8 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
 
         self._last_folder = ""
+        self.factura_index = FacturaIndex()
+        self._json_path_by_source: dict[str, Path] = {}
         self.records: list[RelationRecord] = []
         self.documents: list[tuple[str, dict, list[RelationRecord]]] = []
         self.validation_report: ValidationReport | None = None
@@ -58,6 +66,7 @@ class MainWindow(QMainWindow):
         btn_row = QHBoxLayout()
         self.btn_buscar = QPushButton("Buscar RIPS (JSON)")
         self.btn_carpeta = QPushButton("Buscar carpeta")
+        self.btn_factura = QPushButton("Cargar datos factura")
         self.btn_validar = QPushButton("Validar")
         self.btn_ver_informe = QPushButton("Ver resultado / errores")
         self.btn_exportar = QPushButton("Exportar Excel")
@@ -65,6 +74,7 @@ class MainWindow(QMainWindow):
         for btn in (
             self.btn_buscar,
             self.btn_carpeta,
+            self.btn_factura,
             self.btn_validar,
             self.btn_ver_informe,
             self.btn_exportar,
@@ -76,6 +86,7 @@ class MainWindow(QMainWindow):
 
         self.btn_buscar.clicked.connect(self.on_buscar_archivos)
         self.btn_carpeta.clicked.connect(self.on_buscar_carpeta)
+        self.btn_factura.clicked.connect(self.on_cargar_facturas)
         self.btn_validar.clicked.connect(self.on_validar)
         self.btn_ver_informe.clicked.connect(self.on_ver_informe)
         self.btn_exportar.clicked.connect(self.on_exportar)
@@ -87,6 +98,7 @@ class MainWindow(QMainWindow):
         self.lbl_pacientes = QLabel("Registros: 0")
         self.lbl_total = QLabel("Valor total: 0")
         self.lbl_export = QLabel("Marcados Excel: 0")
+        self.lbl_factura_idx = QLabel("Facturas (datos FEV): 0")
         self.lbl_resultado = QLabel("Resultado RIPS: —")
         self.lbl_resultado.setStyleSheet("font-weight: bold;")
         for w in (
@@ -94,6 +106,7 @@ class MainWindow(QMainWindow):
             self.lbl_pacientes,
             self.lbl_total,
             self.lbl_export,
+            self.lbl_factura_idx,
             self.lbl_resultado,
         ):
             status_layout.addWidget(w)
@@ -172,6 +185,37 @@ class MainWindow(QMainWindow):
         if selected:
             self._load_paths(selected)
 
+    def on_cargar_facturas(self) -> None:
+        folder = self._pick_folder("Carpeta con XML/JSON de factura electrónica")
+        if not folder:
+            return
+        dialog = FacturaSelectDialog(Path(folder), self)
+        if dialog.exec() != FacturaSelectDialog.DialogCode.Accepted:
+            return
+        selected = dialog.selected_paths()
+        if not selected:
+            return
+        self.factura_index.ingest_paths(selected)
+        self._apply_factura_index_to_grid()
+        QMessageBox.information(
+            self,
+            "Facturas cargadas",
+            f"Índice de facturas: {len(self.factura_index)} registro(s).\n"
+            "Se actualizó la grilla con fecha, IPS y nombres disponibles.",
+        )
+
+    def _apply_factura_index_to_grid(self) -> None:
+        if not self.documents:
+            return
+        self.records, self.documents = reload_records_with_facturas(
+            self.documents,
+            self._json_path_by_source,
+            self.factura_index,
+        )
+        self._refresh_table()
+        self._update_stats()
+        self.lbl_factura_idx.setText(f"Facturas (datos FEV): {len(self.factura_index)}")
+
     def _load_paths(self, paths: list[str]) -> None:
         json_paths = discover_json_paths(paths)
         if not json_paths:
@@ -180,15 +224,20 @@ class MainWindow(QMainWindow):
 
         self.records.clear()
         self.documents.clear()
+        self._json_path_by_source.clear()
         self.loaded_files = json_paths
+
+        directories = {jp.parent for jp in json_paths}
+        self.factura_index.scan_directories(directories)
 
         for jp in json_paths:
             data, err = load_json_file(jp)
             source = jp.name
+            self._json_path_by_source[source] = jp
             if err or not isinstance(data, dict):
                 self.documents.append((source, {}, []))
                 continue
-            recs = build_records_from_rips(data, source, jp)
+            recs = build_records_from_rips(data, source, jp, self.factura_index)
             self.records.extend(recs)
             self.documents.append((source, data, recs))
 
@@ -198,6 +247,7 @@ class MainWindow(QMainWindow):
         self.txt_validacion.clear()
         self._refresh_table()
         self._update_stats()
+        self.lbl_factura_idx.setText(f"Facturas (datos FEV): {len(self.factura_index)}")
         QMessageBox.information(
             self,
             "Carga completada",

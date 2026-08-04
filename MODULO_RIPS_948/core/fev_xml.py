@@ -28,10 +28,14 @@ def parse_fev_xml(path: Path) -> dict[str, str]:
     root = tree.getroot()
     supplier_names: list[str] = []
     issue_dates: list[str] = []
+    invoice_ids: list[str] = []
 
     inside_supplier = False
+    inside_invoice = _local(root.tag) == "Invoice"
     for elem in root.iter():
         tag = _local(elem.tag)
+        if tag == "Invoice":
+            inside_invoice = True
         if tag == "AccountingSupplierParty":
             inside_supplier = True
         elif tag in ("AccountingCustomerParty", "InvoiceLine", "LegalMonetaryTotal"):
@@ -39,6 +43,8 @@ def parse_fev_xml(path: Path) -> dict[str, str]:
 
         if tag == "IssueDate" and elem.text:
             issue_dates.append(elem.text.strip())
+        if tag == "ID" and elem.text and inside_invoice and not invoice_ids:
+            invoice_ids.append(elem.text.strip())
         if tag in ("RegistrationName", "Name") and elem.text and inside_supplier:
             supplier_names.append(elem.text.strip())
 
@@ -46,6 +52,8 @@ def parse_fev_xml(path: Path) -> dict[str, str]:
         result["fecha_factura"] = issue_dates[0].split(" ")[0]
     if supplier_names:
         result["nombre_ips"] = supplier_names[0]
+    if invoice_ids:
+        result["num_factura"] = invoice_ids[0].strip()
 
     return result
 

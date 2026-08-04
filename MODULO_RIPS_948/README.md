@@ -40,7 +40,22 @@ python app.py
 
 ## Configuración
 
-En `config.json` solo se guarda la versión del módulo. **No se inventan datos**: el nombre de la IPS solo se toma si viene en el JSON (`nombrePrestador`, `razonSocial`, etc.).
+## Origen de los datos (Res. 948)
+
+| Columna relación | Dónde está según norma |
+|------------------|-------------------------|
+| **Fecha factura** | No está en el objeto transacción RIPS (T01–T04). Se toma de la **FEV**: `informacion_documento.fecha_documento`, `facturas[].encabezado.fecha`, o del **XML** asociado (`IssueDate`). |
+| **Nombre IPS** | No viene en el bloque `usuarios`. Se toma de metadatos del emisor en JSON (`razonSocial`, `nombrePrestador`, etc.) o del **XML FEV** (`RegistrationName` del prestador). |
+| **Nombre paciente** | El bloque usuario RIPS (U01–U12) **no incluye nombre** en el Anexo Técnico 1. Si su software lo envía, se leen campos como `primerNombre`/`primerApellido` o objeto `nombre` tipo FEV. |
+
+Coloque el **XML o JSON de la factura** en la misma carpeta que los RIPS, o use el botón **Cargar datos factura**. El cruce se hace por **número de factura** (`numFactura` en RIPS = `numero_documento` / `ID` en FEV).
+
+### Orden recomendado
+
+1. **Buscar RIPS (JSON)** — seleccione los archivos RIPS reales.
+2. **Cargar datos factura** — seleccione XML/JSON de la FEV (misma carpeta o otra).
+3. El estado muestra **Facturas (datos FEV): N** cuando hay metadatos indexados.
+4. Validar y exportar.
 
 ## Generar EXE (Windows)
 
