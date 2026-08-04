@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(header_box)
 
         self.table = QTableWidget(0, 1 + len(RELATION_COLUMNS))
-        headers = ["Exportar"] + RELATION_COLUMNS
+        headers = ["Aplicar"] + RELATION_COLUMNS
         self.table.setHorizontalHeaderLabels(headers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.setAlternatingRowColors(True)
@@ -284,16 +284,39 @@ class MainWindow(QMainWindow):
                 self.table.setItem(row, col, item)
         self.table.blockSignals(False)
 
+    def _apply_admin_to_row(self, row: int) -> bool:
+        """Copia encabezado administrativo a la fila. Devuelve False si no hay datos."""
+        admin = self._admin_values()
+        if not any(admin.values()):
+            QMessageBox.warning(
+                self,
+                "Datos vacíos",
+                "Complete los campos del encabezado (Caja, REL, Radicado, etc.) antes de aplicar.",
+            )
+            return False
+        self.records[row].apply_admin(admin)
+        return True
+
     def on_cell_changed(self, row: int, column: int) -> None:
         if row < 0 or row >= len(self.records):
             return
         if column == self.COL_EXPORT:
             item = self.table.item(row, self.COL_EXPORT)
-            if item:
-                self.records[row].export_selected = (
-                    item.checkState() == Qt.CheckState.Checked
-                )
-                self._update_stats()
+            if item is None:
+                return
+            checked = item.checkState() == Qt.CheckState.Checked
+            if checked:
+                if self._apply_admin_to_row(row):
+                    self.records[row].export_selected = True
+                    self._refresh_table()
+                else:
+                    self.table.blockSignals(True)
+                    item.setCheckState(Qt.CheckState.Unchecked)
+                    self.records[row].export_selected = False
+                    self.table.blockSignals(False)
+            else:
+                self.records[row].export_selected = False
+            self._update_stats()
             return
         if column > 0:
             col_name = RELATION_COLUMNS[column - 1]
@@ -308,6 +331,7 @@ class MainWindow(QMainWindow):
             return
         for rec in self.records:
             rec.apply_admin(admin)
+            rec.export_selected = True
         self._refresh_table()
 
     def on_validar(self) -> None:
@@ -370,7 +394,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Sin selección",
-                "Marque con el check la columna Exportar los registros que desea incluir en Excel.",
+                "Marque la columna Aplicar en cada fila (copia el encabezado y la incluye en Excel), "
+                "o use Aplicar a todos.",
             )
             return
         path, _ = QFileDialog.getSaveFileName(
