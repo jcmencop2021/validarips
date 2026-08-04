@@ -24,13 +24,13 @@ RELATION_COLUMNS: list[str] = [
     "NACION",
 ]
 
+# Campos del encabezado (comunes); Fecha factura es por factura en la grilla.
 ADMIN_FIELDS: list[str] = [
     "CAJA",
+    "REL",
     "RADICADO",
     "FECHA RADICADO",
     "PERIODO FACTURADO",
-    "Fecha factura",
-    "REL",
 ]
 
 
@@ -42,6 +42,7 @@ class RelationRecord:
     num_documento_obligado: str = ""
     values: dict[str, Any] = field(default_factory=dict)
     admin_applied: bool = False
+    export_selected: bool = False
     validation_messages: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:

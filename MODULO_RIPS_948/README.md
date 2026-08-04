@@ -34,21 +34,13 @@ python app.py
 1. **Buscar RIPS (JSON)** o **Buscar carpeta**: seleccione archivos `.json`.
 2. **Validar**: muestra el resultado en el panel inferior y en *Resultado RIPS*.
 3. **Ver resultado / errores**: ventana con detalle del informe.
-4. Complete el encabezado administrativo y use **Aplicar a todos** o marque **Aplicar** en cada fila de la grilla.
-5. **Exportar Excel**: genera el archivo con el orden de columnas de la plantilla.
-6. **Descargar informe**: guarda el informe de validación en `.txt`.
+4. Complete el encabezado (Caja, REL, Radicado, fechas, Periodo) → **Aplicar a todos**. La **Fecha factura** se edita por fila en la grilla.
+5. Marque **Exportar** en las filas que irán al Excel.
+6. **Exportar Excel**: solo registros marcados.
 
 ## Configuración
 
-En `config.json` puede mapear códigos IPS a nombre:
-
-```json
-{
-  "nombre_ips_por_codigo": {
-    "230010048201": "Nombre de la IPS"
-  }
-}
-```
+En `config.json` solo se guarda la versión del módulo. **No se inventan datos**: el nombre de la IPS solo se toma si viene en el JSON (`nombrePrestador`, `razonSocial`, etc.).
 
 ## Generar EXE (Windows)
 

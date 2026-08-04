@@ -9,6 +9,7 @@ try:
 except ImportError:  # pragma: no cover
     orjson = None  # type: ignore
 
+from core.rips_rules import FECHA_FACTURA_JSON_KEYS, NOMBRE_IPS_JSON_KEYS
 from models.relation_record import RelationRecord
 
 
@@ -44,13 +45,30 @@ def discover_json_paths(paths: list[str]) -> list[Path]:
     return result
 
 
+def list_json_in_folder(folder: str | Path) -> list[Path]:
+    path = Path(folder)
+    if not path.is_dir():
+        return []
+    return sorted(path.glob("*.json"))
+
+
 def _parse_service_date(value: str | None) -> str:
     if not value:
         return ""
     return value.split(" ")[0].strip()
 
 
-def _collect_user_metrics(usuario: dict[str, Any]) -> tuple[str, str, str | None, float, int]:
+def _first_json_string(data: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        val = data.get(key)
+        if val not in (None, ""):
+            return str(val).strip()
+    return ""
+
+
+def _collect_user_metrics(
+    usuario: dict[str, Any],
+) -> tuple[str, str, str | None, float, int]:
     servicios = usuario.get("servicios") or {}
     dates: list[str] = []
     total = 0.0
@@ -89,20 +107,22 @@ def _collect_user_metrics(usuario: dict[str, Any]) -> tuple[str, str, str | None
     return feching, fechfin, cod_ips, total, count
 
 
-def build_records_from_rips(
-    data: dict[str, Any],
-    source_file: str,
-    nombre_ips_map: dict[str, str] | None = None,
-) -> list[RelationRecord]:
-    nombre_ips_map = nombre_ips_map or {}
+def build_records_from_rips(data: dict[str, Any], source_file: str) -> list[RelationRecord]:
     num_factura = str(data.get("numFactura") or "")
     nit = str(data.get("numDocumentoIdObligado") or "")
+    nombre_ips = _first_json_string(data, NOMBRE_IPS_JSON_KEYS)
+    fecha_factura = _first_json_string(data, FECHA_FACTURA_JSON_KEYS)
+    if fecha_factura and " " in fecha_factura:
+        fecha_factura = fecha_factura.split(" ")[0]
+
     usuarios = data.get("usuarios") or []
     records: list[RelationRecord] = []
 
     if not isinstance(usuarios, list) or not usuarios:
         rec = RelationRecord(source_file=source_file, num_documento_obligado=nit)
         rec.values["NroFac"] = num_factura
+        rec.values["NombreIps"] = nombre_ips
+        rec.values["Fecha factura"] = fecha_factura
         records.append(rec)
         return records
 
@@ -117,7 +137,7 @@ def build_records_from_rips(
                 "FECHAING": feching,
                 "FECHAFIN": fechfin,
                 "CodIps": cod_ips_str,
-                "NombreIps": nombre_ips_map.get(cod_ips_str, ""),
+                "NombreIps": nombre_ips,
                 "NroFac": num_factura,
                 "TipoIde": usuario.get("tipoDocumentoIdentificacion") or "",
                 "NumIde": usuario.get("numDocumentoIdentificacion") or "",
@@ -127,6 +147,7 @@ def build_records_from_rips(
                 "NACION": usuario.get("codPaisOrigen")
                 or usuario.get("codPaisResidencia")
                 or "",
+                "Fecha factura": fecha_factura,
             }
         )
         records.append(rec)

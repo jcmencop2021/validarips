@@ -9,7 +9,6 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -29,19 +28,21 @@ from core.excel_export import ensure_template, export_to_excel
 from core.loader import build_records_from_rips, discover_json_paths, load_json_file
 from core.validator import ValidationReport, validate_all
 from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecord
+from ui.json_select_dialog import JsonSelectDialog
 
 APP_ROOT = Path(__file__).resolve().parent.parent
+FIELD_WIDTH = 110
 
 
 class MainWindow(QMainWindow):
-    COL_APPLY = 0
+    COL_EXPORT = 0
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Módulo RIPS — Relación Resolución 948 v1.0")
         self.resize(1280, 800)
 
-        self.config = self._load_config()
+        self._last_folder = ""
         self.records: list[RelationRecord] = []
         self.documents: list[tuple[str, dict, list[RelationRecord]]] = []
         self.validation_report: ValidationReport | None = None
@@ -49,21 +50,11 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
 
-    def _load_config(self) -> dict:
-        cfg_path = APP_ROOT / "config.json"
-        if cfg_path.is_file():
-            try:
-                return json.loads(cfg_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                pass
-        return {"nombre_ips_por_codigo": {}}
-
     def _build_ui(self) -> None:
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
 
-        # Botonera superior
         btn_row = QHBoxLayout()
         self.btn_buscar = QPushButton("Buscar RIPS (JSON)")
         self.btn_carpeta = QPushButton("Buscar carpeta")
@@ -90,75 +81,96 @@ class MainWindow(QMainWindow):
         self.btn_exportar.clicked.connect(self.on_exportar)
         self.btn_descargar.clicked.connect(self.on_descargar_informe)
 
-        # Estado
         status_box = QGroupBox("Estado")
         status_layout = QHBoxLayout(status_box)
         self.lbl_facturas = QLabel("Facturas: 0")
-        self.lbl_pacientes = QLabel("Registros (usuarios): 0")
+        self.lbl_pacientes = QLabel("Registros: 0")
         self.lbl_total = QLabel("Valor total: 0")
+        self.lbl_export = QLabel("Marcados Excel: 0")
         self.lbl_resultado = QLabel("Resultado RIPS: —")
         self.lbl_resultado.setStyleSheet("font-weight: bold;")
-        for w in (self.lbl_facturas, self.lbl_pacientes, self.lbl_total, self.lbl_resultado):
+        for w in (
+            self.lbl_facturas,
+            self.lbl_pacientes,
+            self.lbl_total,
+            self.lbl_export,
+            self.lbl_resultado,
+        ):
             status_layout.addWidget(w)
         status_layout.addStretch()
         layout.addWidget(status_box)
 
-        # Encabezado administrativo
         header_box = QGroupBox("Datos administrativos (comunes)")
-        header_grid = QGridLayout(header_box)
+        header_row = QHBoxLayout(header_box)
         self.admin_inputs: dict[str, QLineEdit] = {}
         labels = {
             "CAJA": "Caja",
-            "RADICADO": "Radicado",
-            "FECHA RADICADO": "Fecha radicado",
-            "PERIODO FACTURADO": "Periodo",
-            "Fecha factura": "Fecha factura",
             "REL": "REL",
+            "RADICADO": "Radicado",
+            "FECHA RADICADO": "F. radicado",
+            "PERIODO FACTURADO": "Periodo",
         }
-        for i, field in enumerate(ADMIN_FIELDS):
-            row, col = divmod(i, 3)
-            header_grid.addWidget(QLabel(labels.get(field, field)), row * 2, col)
+        for field in ADMIN_FIELDS:
+            col = QVBoxLayout()
+            lbl = QLabel(labels.get(field, field))
             edit = QLineEdit()
+            edit.setMaximumWidth(FIELD_WIDTH)
             self.admin_inputs[field] = edit
-            header_grid.addWidget(edit, row * 2 + 1, col)
+            col.addWidget(lbl)
+            col.addWidget(edit)
+            header_row.addLayout(col)
+        header_row.addStretch()
         self.btn_aplicar_todos = QPushButton("Aplicar a todos")
+        self.btn_aplicar_todos.setMaximumWidth(120)
         self.btn_aplicar_todos.clicked.connect(self.on_aplicar_todos)
-        header_grid.addWidget(self.btn_aplicar_todos, 4, 0, 1, 3)
+        header_row.addWidget(self.btn_aplicar_todos)
         layout.addWidget(header_box)
 
-        # Grilla
         self.table = QTableWidget(0, 1 + len(RELATION_COLUMNS))
-        headers = ["Aplicar"] + RELATION_COLUMNS
+        headers = ["Exportar"] + RELATION_COLUMNS
         self.table.setHorizontalHeaderLabels(headers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.setAlternatingRowColors(True)
         self.table.cellChanged.connect(self.on_cell_changed)
         layout.addWidget(self.table, stretch=1)
 
-        # Panel inferior validación
         self.txt_validacion = QTextEdit()
         self.txt_validacion.setReadOnly(True)
         self.txt_validacion.setPlaceholderText("Resultado de validación RIPS…")
-        self.txt_validacion.setMaximumHeight(160)
+        self.txt_validacion.setMaximumHeight(140)
         layout.addWidget(self.txt_validacion)
 
     def _admin_values(self) -> dict[str, str]:
         return {k: w.text().strip() for k, w in self.admin_inputs.items()}
 
+    def _pick_folder(self, title: str) -> str:
+        start = self._last_folder or str(Path.home())
+        folder = QFileDialog.getExistingDirectory(self, title, start)
+        if folder:
+            self._last_folder = folder
+        return folder
+
+    def _select_json_from_folder(self, folder: str) -> list[str]:
+        dialog = JsonSelectDialog(Path(folder), self)
+        if dialog.exec() != JsonSelectDialog.DialogCode.Accepted:
+            return []
+        return dialog.selected_paths()
+
     def on_buscar_archivos(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Seleccionar archivos RIPS JSON",
-            "",
-            "Archivos JSON (*.json)",
-        )
-        if paths:
-            self._load_paths(paths)
+        folder = self._pick_folder("Carpeta donde están los archivos RIPS JSON")
+        if not folder:
+            return
+        selected = self._select_json_from_folder(folder)
+        if selected:
+            self._load_paths(selected)
 
     def on_buscar_carpeta(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta con JSON")
-        if folder:
-            self._load_paths([folder])
+        folder = self._pick_folder("Seleccionar carpeta con archivos JSON")
+        if not folder:
+            return
+        selected = self._select_json_from_folder(folder)
+        if selected:
+            self._load_paths(selected)
 
     def _load_paths(self, paths: list[str]) -> None:
         json_paths = discover_json_paths(paths)
@@ -169,7 +181,6 @@ class MainWindow(QMainWindow):
         self.records.clear()
         self.documents.clear()
         self.loaded_files = json_paths
-        ips_map = self.config.get("nombre_ips_por_codigo") or {}
 
         for jp in json_paths:
             data, err = load_json_file(jp)
@@ -177,39 +188,36 @@ class MainWindow(QMainWindow):
             if err or not isinstance(data, dict):
                 self.documents.append((source, {}, []))
                 continue
-            recs = build_records_from_rips(data, source, ips_map)
+            recs = build_records_from_rips(data, source)
             self.records.extend(recs)
             self.documents.append((source, data, recs))
 
         self.validation_report = None
         self.lbl_resultado.setText("Resultado RIPS: — (pendiente validar)")
-        self.lbl_resultado.setStyleSheet("font-weight: bold;")
+        self.lbl_resultado.setStyleSheet("font-weight: bold; color: #333;")
         self.txt_validacion.clear()
         self._refresh_table()
         self._update_stats()
         QMessageBox.information(
             self,
             "Carga completada",
-            f"Se cargaron {len(json_paths)} archivo(s) JSON.\n"
-            f"Registros en grilla: {len(self.records)}",
+            f"Archivos cargados: {len(json_paths)}\nRegistros en grilla: {len(self.records)}",
         )
 
     def _refresh_table(self) -> None:
         self.table.blockSignals(True)
         self.table.setRowCount(len(self.records))
         for row, rec in enumerate(self.records):
-            apply_item = QTableWidgetItem()
-            apply_item.setFlags(
+            export_item = QTableWidgetItem()
+            export_item.setFlags(
                 Qt.ItemFlag.ItemIsEnabled
                 | Qt.ItemFlag.ItemIsUserCheckable
                 | Qt.ItemFlag.ItemIsSelectable
             )
-            if rec.admin_applied:
-                apply_item.setCheckState(Qt.CheckState.Checked)
-                apply_item.setFlags(Qt.ItemFlag.ItemIsSelectable)
-            else:
-                apply_item.setCheckState(Qt.CheckState.Unchecked)
-            self.table.setItem(row, self.COL_APPLY, apply_item)
+            export_item.setCheckState(
+                Qt.CheckState.Checked if rec.export_selected else Qt.CheckState.Unchecked
+            )
+            self.table.setItem(row, self.COL_EXPORT, export_item)
 
             for col, name in enumerate(RELATION_COLUMNS, start=1):
                 value = rec.values.get(name, "")
@@ -229,35 +237,19 @@ class MainWindow(QMainWindow):
     def on_cell_changed(self, row: int, column: int) -> None:
         if row < 0 or row >= len(self.records):
             return
-        if column == self.COL_APPLY:
-            item = self.table.item(row, self.COL_APPLY)
-            if item is None:
-                return
-            if item.checkState() == Qt.CheckState.Checked and not self.records[row].admin_applied:
-                self._apply_admin_to_row(row)
+        if column == self.COL_EXPORT:
+            item = self.table.item(row, self.COL_EXPORT)
+            if item:
+                self.records[row].export_selected = (
+                    item.checkState() == Qt.CheckState.Checked
+                )
+                self._update_stats()
             return
         if column > 0:
             col_name = RELATION_COLUMNS[column - 1]
             cell = self.table.item(row, column)
             if cell:
                 self.records[row].values[col_name] = cell.text()
-
-    def _apply_admin_to_row(self, row: int) -> None:
-        admin = self._admin_values()
-        if not any(admin.values()):
-            QMessageBox.warning(
-                self,
-                "Datos vacíos",
-                "Complete al menos un campo administrativo en el encabezado antes de aplicar.",
-            )
-            item = self.table.item(row, self.COL_APPLY)
-            if item:
-                self.table.blockSignals(True)
-                item.setCheckState(Qt.CheckState.Unchecked)
-                self.table.blockSignals(False)
-            return
-        self.records[row].apply_admin(admin)
-        self._refresh_table()
 
     def on_aplicar_todos(self) -> None:
         admin = self._admin_values()
@@ -309,18 +301,27 @@ class MainWindow(QMainWindow):
     def _update_stats(self) -> None:
         facturas = {r.values.get("NroFac") for r in self.records if r.values.get("NroFac")}
         total = 0.0
+        marked = 0
         for r in self.records:
-            try:
-                total += float(r.values.get("VlorNeto") or 0)
-            except (TypeError, ValueError):
-                pass
+            if r.export_selected:
+                marked += 1
+                try:
+                    total += float(r.values.get("VlorNeto") or 0)
+                except (TypeError, ValueError):
+                    pass
         self.lbl_facturas.setText(f"Facturas: {len(facturas)}")
-        self.lbl_pacientes.setText(f"Registros (usuarios): {len(self.records)}")
-        self.lbl_total.setText(f"Valor total: {total:,.0f}")
+        self.lbl_pacientes.setText(f"Registros: {len(self.records)}")
+        self.lbl_total.setText(f"Valor total marcados: {total:,.0f}")
+        self.lbl_export.setText(f"Marcados Excel: {marked}")
 
     def on_exportar(self) -> None:
-        if not self.records:
-            QMessageBox.warning(self, "Sin datos", "No hay registros para exportar.")
+        selected = [r for r in self.records if r.export_selected]
+        if not selected:
+            QMessageBox.warning(
+                self,
+                "Sin selección",
+                "Marque con el check la columna Exportar los registros que desea incluir en Excel.",
+            )
             return
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -332,8 +333,12 @@ class MainWindow(QMainWindow):
             return
         template = APP_ROOT / "templates" / "plantilla_relacion.xlsx"
         ensure_template(template)
-        export_to_excel(self.records, Path(path), template)
-        QMessageBox.information(self, "Exportación", f"Archivo Excel generado:\n{path}")
+        export_to_excel(selected, Path(path), template)
+        QMessageBox.information(
+            self,
+            "Exportación",
+            f"Archivo Excel generado con {len(selected)} registro(s):\n{path}",
+        )
 
 
 def run() -> None:
