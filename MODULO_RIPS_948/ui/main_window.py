@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
 
 from core.dedupe import dedupe_documents, dedupe_path_strings, dedupe_records
 from core.excel_export import ensure_template, export_to_excel
-from core.factura_index import FacturaIndex
+from core.factura_index import FacturaIndex, is_rips_payload
+from core.date_fmt import DISPLAY_FMT
 from core.loader import (
     build_records_from_rips,
     discover_json_paths,

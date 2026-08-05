@@ -9,12 +9,14 @@ from openpyxl import load_workbook
 NIT_ALIASES = frozenset(
     {
         "nit",
-        "nit's",
+        "nits",
         "numdocumentoidobligado",
         "documento",
         "identificacion",
         "numero_identificacion",
         "codigo",
+        "id",
+        "numnit",
     }
 )
 NOMBRE_ALIASES = frozenset(
@@ -28,6 +30,8 @@ NOMBRE_ALIASES = frozenset(
         "nombreprestador",
         "entidad",
         "descripcion",
+        "nombreentidad",
+        "nombrerazonsocial",
     }
 )
 
@@ -45,18 +49,28 @@ class PrestadoresCatalog:
     def __init__(self) -> None:
         self._by_nit: dict[str, str] = {}
         self.source_file: str = ""
+        self.rows_loaded: int = 0
 
     def __len__(self) -> int:
         return len(self._by_nit)
 
     def get(self, nit: str) -> str:
-        key = _norm_nit(nit)
-        if not key:
+        n = _norm_nit(nit)
+        if not n:
             return ""
-        return self._by_nit.get(key, "")
+        candidates = [n]
+        if len(n) > 9:
+            candidates.append(n[:9])
+        if len(n) > 1:
+            candidates.append(n[:-1])
+        for key in candidates:
+            if key in self._by_nit:
+                return self._by_nit[key]
+        return ""
 
     def load_file(self, path: Path) -> int:
         self._by_nit.clear()
+        self.rows_loaded = 0
         suffix = path.suffix.lower()
         if suffix in (".xlsx", ".xlsm"):
             count = self._load_xlsx(path)
@@ -66,8 +80,9 @@ class PrestadoresCatalog:
             count = self._load_csv(path, delimiter=None)
         else:
             return 0
+        self.rows_loaded = count
         if count:
-            self.source_file = path.name
+            self.source_file = str(path)
         return count
 
     def _register_row(self, nit: str, nombre: str) -> bool:
@@ -89,15 +104,17 @@ class PrestadoresCatalog:
                 name_idx = i
         if nit_idx is None:
             for i, h in enumerate(headers):
-                if "nit" in _norm_header(h):
+                if "nit" in _norm_header(h) or "documento" in _norm_header(h):
                     nit_idx = i
                     break
         if name_idx is None:
             for i, h in enumerate(headers):
                 norm = _norm_header(h)
-                if "nombre" in norm or "razon" in norm or "prestador" in norm:
+                if any(x in norm for x in ("nombre", "razon", "prestador", "entidad")):
                     name_idx = i
                     break
+        if nit_idx is None and name_idx is None and len(headers) >= 2:
+            nit_idx, name_idx = 0, 1
         return nit_idx, name_idx
 
     def _load_xlsx(self, path: Path) -> int:
@@ -145,32 +162,42 @@ class PrestadoresCatalog:
         return count
 
 
-def find_prestadores_file(work_directories: set[Path]) -> Path | None:
-    patterns = (
-        "*prestador*",
-        "*Prestador*",
-        "*PRESTADOR*",
-        "*prestadores*",
-        "*Prestadores*",
-    )
+def find_prestadores_file(search_roots: set[Path]) -> Path | None:
     extensions = {".xlsx", ".xlsm", ".csv", ".txt"}
     candidates: list[Path] = []
-    for directory in work_directories:
-        docs = directory / "docs"
+
+    def scan_docs(base: Path) -> None:
+        docs = base / "docs"
         if not docs.is_dir():
-            continue
-        for pattern in patterns:
-            for path in docs.glob(pattern):
-                if path.suffix.lower() in extensions and path.is_file():
-                    candidates.append(path)
+            return
+        for path in sorted(docs.iterdir()):
+            if not path.is_file() or path.suffix.lower() not in extensions:
+                continue
+            name = path.name.lower()
+            if "prestador" in name or name.startswith("entidad"):
+                candidates.insert(0, path)
+            else:
+                candidates.append(path)
+
+    for root in search_roots:
+        if root.is_dir():
+            scan_docs(root)
+            scan_docs(root.parent)
+
     if not candidates:
         return None
-    return sorted(candidates, key=lambda p: p.name.lower())[0]
+
+    def sort_key(p: Path) -> tuple[int, str]:
+        n = p.name.lower()
+        priority = 0 if "prestador" in n else 1
+        return (priority, n)
+
+    return sorted(candidates, key=sort_key)[0]
 
 
-def load_prestadores_catalog(work_directories: set[Path]) -> PrestadoresCatalog:
+def load_prestadores_catalog(search_roots: set[Path]) -> PrestadoresCatalog:
     catalog = PrestadoresCatalog()
-    path = find_prestadores_file(work_directories)
+    path = find_prestadores_file(search_roots)
     if path:
         catalog.load_file(path)
     return catalog

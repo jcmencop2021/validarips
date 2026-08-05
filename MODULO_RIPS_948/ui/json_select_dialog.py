@@ -24,6 +24,8 @@ from core.dedupe import dedupe_path_strings
 from core.factura_index import is_rips_payload
 from core.loader import load_json_file
 
+from core.date_fmt import DISPLAY_FMT, parse_date_for_editor
+
 GRID_DATE_COLUMNS: frozenset[str] = frozenset(
     {
         "FECHA RADICADO",
@@ -35,24 +37,29 @@ GRID_DATE_COLUMNS: frozenset[str] = frozenset(
 
 
 class DateTableDelegate(QStyledItemDelegate):
-    """Editor de fecha AAAA-MM-DD en la grilla."""
+    """Editor de fecha AAAA/MM/DD en la grilla."""
 
     def createEditor(self, parent: QWidget, option, index):  # noqa: ANN001
         editor = QDateEdit(parent)
         editor.setCalendarPopup(True)
-        editor.setDisplayFormat("yyyy-MM-dd")
-        editor.setMinimumWidth(120)
+        editor.setDisplayFormat(DISPLAY_FMT)
+        editor.setMinimumWidth(130)
         return editor
 
     def setEditorData(self, editor, index) -> None:  # noqa: ANN001
         text = str(index.model().data(index, Qt.ItemDataRole.DisplayRole) or "").strip()
-        date = QDate.fromString(text[:10], "yyyy-MM-dd")
+        iso = parse_date_for_editor(text)
+        date = QDate.fromString(iso, "yyyy-MM-dd")
         if not date.isValid():
             date = QDate.currentDate()
         editor.setDate(date)
 
     def setModelData(self, editor, model, index) -> None:  # noqa: ANN001
-        model.setData(index, editor.date().toString("yyyy-MM-dd"), Qt.ItemDataRole.EditRole)
+        model.setData(
+            index,
+            editor.date().toString(DISPLAY_FMT),
+            Qt.ItemDataRole.EditRole,
+        )
 
 
 class RipsFolderDialog(QDialog):

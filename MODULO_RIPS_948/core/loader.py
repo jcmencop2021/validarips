@@ -12,12 +12,14 @@ except ImportError:  # pragma: no cover
 from core.dedupe import dedupe_documents, dedupe_records
 from core.factura_index import FacturaIndex, FacturaMetadata, is_rips_payload
 from core.fev_xml import find_companion_xml, parse_fev_xml
+from core.date_fmt import format_date_display
 from core.json_extract import (
     extract_fecha_factura,
     extract_nombre_ips,
     extract_nombre_paciente,
     unwrap_rips_root,
 )
+from core.paises import nombre_pais
 from models.relation_record import RelationRecord
 from core.prestadores import PrestadoresCatalog
 
@@ -149,12 +151,21 @@ def _apply_factura_to_values(
     if not factura:
         return
     if factura.fecha_factura and not values.get("Fecha factura"):
-        values["Fecha factura"] = factura.fecha_factura
+        values["Fecha factura"] = format_date_display(factura.fecha_factura)
     if factura.nombre_ips and not values.get("NombreIps"):
         values["NombreIps"] = factura.nombre_ips
     nombre = factura.nombre_paciente(tipo_doc, num_doc)
     if nombre and not values.get("Nombre"):
         values["Nombre"] = nombre
+
+
+def _record_has_data(rec: RelationRecord) -> bool:
+    v = rec.values
+    if not str(v.get("NumIde") or "").strip():
+        return False
+    if not str(v.get("NroFac") or "").strip():
+        return False
+    return True
 
 
 def build_records_from_rips(
@@ -186,18 +197,17 @@ def build_records_from_rips(
     if factura_meta:
         fecha_factura = fecha_factura or factura_meta.fecha_factura
         nombre_ips = nombre_ips or factura_meta.nombre_ips
+    fecha_factura = format_date_display(fecha_factura)
+    if factura_meta and factura_meta.fecha_factura:
+        values_ff = format_date_display(factura_meta.fecha_factura)
+        if values_ff:
+            fecha_factura = values_ff
 
     usuarios = rips.get("usuarios") or []
     records: list[RelationRecord] = []
 
     if not isinstance(usuarios, list) or not usuarios:
-        rec = RelationRecord(source_file=source_file, num_documento_obligado=nit)
-        rec.values["NroFac"] = num_factura
-        rec.values["NombreIps"] = nombre_ips
-        rec.values["Fecha factura"] = fecha_factura
-        _apply_factura_to_values(rec.values, factura_meta, "", "")
-        records.append(rec)
-        return records
+        return []
 
     for usuario in usuarios:
         if not isinstance(usuario, dict):
@@ -211,8 +221,8 @@ def build_records_from_rips(
         rec = RelationRecord(source_file=source_file, num_documento_obligado=nit)
         rec.values.update(
             {
-                "FECHAING": feching,
-                "FECHAFIN": fechfin,
+                "FECHAING": format_date_display(feching),
+                "FECHAFIN": format_date_display(fechfin),
                 "CodIps": cod_ips_str,
                 "NombreIps": nombre_ips,
                 "NroFac": num_factura,
@@ -221,14 +231,17 @@ def build_records_from_rips(
                 "Nombre": nombre_paciente,
                 "VlorNeto": total if total else "",
                 "SERVICIO": count if count else "",
-                "NACION": usuario.get("codPaisOrigen")
-                or usuario.get("codPaisResidencia")
-                or "",
+                "NACION": nombre_pais(
+                    usuario.get("codPaisOrigen") or usuario.get("codPaisResidencia")
+                ),
                 "Fecha factura": fecha_factura,
             }
         )
         _apply_factura_to_values(rec.values, factura_meta, tipo_doc, num_doc)
-        records.append(rec)
+        if factura_meta and factura_meta.fecha_factura:
+            rec.values["Fecha factura"] = format_date_display(factura_meta.fecha_factura)
+        if _record_has_data(rec):
+            records.append(rec)
 
     return records
 
