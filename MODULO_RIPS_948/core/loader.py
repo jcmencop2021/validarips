@@ -10,7 +10,7 @@ except ImportError:  # pragma: no cover
     orjson = None  # type: ignore
 
 from core.dedupe import dedupe_documents, dedupe_records
-from core.prestadores import PrestadoresCatalog, load_prestadores_catalog
+from core.factura_index import FacturaIndex, FacturaMetadata, is_rips_payload
 from core.fev_xml import find_companion_xml, parse_fev_xml
 from core.json_extract import (
     extract_fecha_factura,
@@ -19,6 +19,7 @@ from core.json_extract import (
     unwrap_rips_root,
 )
 from models.relation_record import RelationRecord
+from core.prestadores import PrestadoresCatalog
 
 
 def _parse_json_bytes(raw: bytes) -> Any:
@@ -33,10 +34,6 @@ def load_json_file(path: Path) -> tuple[Any | None, str | None]:
         return _parse_json_bytes(raw), None
     except Exception as exc:  # noqa: BLE001
         return None, f"{path.name}: JSON inválido ({exc})"
-
-
-from core.factura_index import is_rips_payload
-from models.relation_record import RelationRecord
 
 
 def is_rips_json_file(path: Path) -> bool:
@@ -67,13 +64,6 @@ def discover_json_paths(paths: list[str], *, rips_only: bool = True) -> list[Pat
             seen.add(resolved)
             result.append(path)
     return result
-
-
-def list_json_in_folder(folder: str | Path) -> list[Path]:
-    path = Path(folder)
-    if not path.is_dir():
-        return []
-    return sorted(path.glob("*.json"))
 
 
 def _parse_service_date(value: str | None) -> str:

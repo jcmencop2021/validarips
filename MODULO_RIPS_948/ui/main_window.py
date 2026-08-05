@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
+    QDateEdit,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -36,7 +37,7 @@ from core.prestadores import PrestadoresCatalog, load_prestadores_catalog
 from core.validator import ValidationReport, validate_all
 from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecord
 from ui.factura_select_dialog import FacturaSelectDialog
-from ui.json_select_dialog import JsonSelectDialog
+from ui.json_select_dialog import DateTableDelegate, GRID_DATE_COLUMNS, RipsFolderDialog
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 FIELD_WIDTH = 110
@@ -132,8 +133,14 @@ class MainWindow(QMainWindow):
         for field in ADMIN_FIELDS:
             col = QVBoxLayout()
             lbl = QLabel(labels.get(field, field))
-            edit = QLineEdit()
-            edit.setMaximumWidth(FIELD_WIDTH)
+            if field == "FECHA RADICADO":
+                edit: QLineEdit | QDateEdit = QDateEdit()
+                edit.setCalendarPopup(True)
+                edit.setDisplayFormat("yyyy-MM-dd")
+                edit.setMaximumWidth(130)
+            else:
+                edit = QLineEdit()
+                edit.setMaximumWidth(FIELD_WIDTH)
             self.admin_inputs[field] = edit
             col.addWidget(lbl)
             col.addWidget(edit)
@@ -151,6 +158,11 @@ class MainWindow(QMainWindow):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.setAlternatingRowColors(True)
         self.table.cellChanged.connect(self.on_cell_changed)
+        self._date_delegate = DateTableDelegate(self.table)
+        for col_name in GRID_DATE_COLUMNS:
+            if col_name in RELATION_COLUMNS:
+                col_idx = 1 + RELATION_COLUMNS.index(col_name)
+                self.table.setItemDelegateForColumn(col_idx, self._date_delegate)
         layout.addWidget(self.table, stretch=1)
 
         self.txt_validacion = QTextEdit()
@@ -160,41 +172,42 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.txt_validacion)
 
     def _admin_values(self) -> dict[str, str]:
-        return {k: w.text().strip() for k, w in self.admin_inputs.items()}
+        values: dict[str, str] = {}
+        for key, widget in self.admin_inputs.items():
+            if isinstance(widget, QDateEdit):
+                values[key] = widget.date().toString("yyyy-MM-dd")
+            else:
+                values[key] = widget.text().strip()
+        return values
 
-    def _pick_folder(self, title: str) -> str:
-        start = self._last_folder or str(Path.home())
-        folder = QFileDialog.getExistingDirectory(self, title, start)
+    def _open_rips_picker(self) -> list[str]:
+        dialog = RipsFolderDialog(self._last_folder, self)
+        if dialog.exec() != RipsFolderDialog.DialogCode.Accepted:
+            return []
+        folder = dialog.folder()
         if folder:
             self._last_folder = folder
-        return folder
-
-    def _select_json_from_folder(self, folder: str) -> list[str]:
-        dialog = JsonSelectDialog(Path(folder), self)
-        if dialog.exec() != JsonSelectDialog.DialogCode.Accepted:
-            return []
         return dialog.selected_paths()
 
     def on_buscar_archivos(self) -> None:
-        folder = self._pick_folder("Carpeta donde están los archivos RIPS JSON")
-        if not folder:
-            return
-        selected = self._select_json_from_folder(folder)
+        selected = self._open_rips_picker()
         if selected:
             self._load_paths(selected)
 
     def on_buscar_carpeta(self) -> None:
-        folder = self._pick_folder("Seleccionar carpeta con archivos JSON")
-        if not folder:
-            return
-        selected = self._select_json_from_folder(folder)
+        selected = self._open_rips_picker()
         if selected:
             self._load_paths(selected)
 
     def on_cargar_facturas(self) -> None:
-        folder = self._pick_folder("Carpeta con XML/JSON de factura electrónica")
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Carpeta con XML/JSON de factura electrónica",
+            self._last_folder or str(Path.home()),
+        )
         if not folder:
             return
+        self._last_folder = folder
         dialog = FacturaSelectDialog(Path(folder), self)
         if dialog.exec() != FacturaSelectDialog.DialogCode.Accepted:
             return
@@ -234,9 +247,9 @@ class MainWindow(QMainWindow):
 
     def _load_paths(self, paths: list[str]) -> None:
         paths = dedupe_path_strings(paths)
-        json_paths = discover_json_paths(paths)
+        json_paths = discover_json_paths(paths, rips_only=False)
         if not json_paths:
-            QMessageBox.warning(self, "Sin archivos", "No se encontraron archivos RIPS (.json).")
+            QMessageBox.warning(self, "Sin archivos", "No se encontraron archivos .json.")
             return
 
         seen_files: set[str] = set()
@@ -253,7 +266,7 @@ class MainWindow(QMainWindow):
         self.documents.clear()
         self._json_path_by_source.clear()
         self.loaded_files = json_paths
-        skipped_dupes = len(paths) - len(json_paths)
+        skipped_dupes = max(0, len(paths) - len(json_paths))
 
         work_dirs: set[Path] = set()
         for jp in json_paths:
@@ -270,12 +283,6 @@ class MainWindow(QMainWindow):
         self.factura_index.scan_directories(directories)
 
         for jp in json_paths:
-            resolved = str(jp.resolve())
-            if resolved in seen_files:
-                skipped_dupes += 1
-                continue
-            seen_files.add(resolved)
-
             data, err = load_json_file(jp)
             source = jp.name
             self._json_path_by_source[source] = jp
@@ -285,6 +292,8 @@ class MainWindow(QMainWindow):
             recs = build_records_from_rips(
                 data, source, jp, self.factura_index, self.prestadores
             )
+            if not recs:
+                continue
             self.records.extend(recs)
             self.documents.append((source, data, recs))
 
@@ -336,6 +345,12 @@ class MainWindow(QMainWindow):
                         | Qt.ItemFlag.ItemIsEnabled
                     )
                 self.table.setItem(row, col, item)
+        if "Nombre" in RELATION_COLUMNS:
+            nombre_col = 1 + RELATION_COLUMNS.index("Nombre")
+            self.table.setColumnWidth(nombre_col, 280)
+            self.table.horizontalHeader().setSectionResizeMode(
+                nombre_col, QHeaderView.ResizeMode.Interactive
+            )
         self.table.blockSignals(False)
 
     def _apply_admin_to_row(self, row: int) -> bool:
