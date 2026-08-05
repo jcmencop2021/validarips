@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -35,6 +36,7 @@ from core.loader import (
     reload_records_with_facturas,
 )
 from core.prestadores import PrestadoresCatalog, load_prestadores_catalog
+from core.version import BUILD_ID, get_version
 from core.validator import ValidationReport, validate_all
 from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecord
 from ui.factura_select_dialog import FacturaSelectDialog
@@ -49,8 +51,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Módulo RIPS — Relación Resolución 948 v1.0")
-        self.resize(1280, 800)
+        self._app_version = get_version()
+        self.setWindowTitle(f"Módulo RIPS — Relación Res. 948 — v{self._app_version}")
+        self.resize(1280, 860)
 
         self._last_folder = ""
         self.factura_index = FacturaIndex()
@@ -63,16 +66,36 @@ class MainWindow(QMainWindow):
         self.loaded_files: list[Path] = []
 
         self._build_ui()
+        self._show_version_banner()
+
+    def _show_version_banner(self) -> None:
+        QMessageBox.information(
+            self,
+            f"Versión {self._app_version}",
+            f"Módulo instalado desde:\n{APP_ROOT}\n\n"
+            f"Build: {BUILD_ID}\n\n"
+            "Si no ve el cartel naranja arriba con la misma versión,\n"
+            "está ejecutando una carpeta antigua. Lea LEEME_ACTUALIZACION.txt",
+        )
 
     def _build_ui(self) -> None:
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
 
+        self.lbl_version_banner = QLabel(
+            f"  VERSIÓN {self._app_version} — {BUILD_ID}  |  Módulo: {APP_ROOT}"
+        )
+        self.lbl_version_banner.setStyleSheet(
+            "background-color: #e65100; color: white; font-weight: bold; padding: 8px;"
+        )
+        layout.addWidget(self.lbl_version_banner)
+
         btn_row = QHBoxLayout()
         self.btn_buscar = QPushButton("Buscar RIPS (JSON)")
         self.btn_carpeta = QPushButton("Buscar carpeta")
         self.btn_factura = QPushButton("Cargar datos factura")
+        self.btn_prestadores = QPushButton("Catálogo prestadores")
         self.btn_validar = QPushButton("Validar")
         self.btn_ver_informe = QPushButton("Ver resultado / errores")
         self.btn_exportar = QPushButton("Exportar Excel")
@@ -81,6 +104,7 @@ class MainWindow(QMainWindow):
             self.btn_buscar,
             self.btn_carpeta,
             self.btn_factura,
+            self.btn_prestadores,
             self.btn_validar,
             self.btn_ver_informe,
             self.btn_exportar,
@@ -93,6 +117,7 @@ class MainWindow(QMainWindow):
         self.btn_buscar.clicked.connect(self.on_buscar_archivos)
         self.btn_carpeta.clicked.connect(self.on_buscar_carpeta)
         self.btn_factura.clicked.connect(self.on_cargar_facturas)
+        self.btn_prestadores.clicked.connect(self.on_cargar_prestadores)
         self.btn_validar.clicked.connect(self.on_validar)
         self.btn_ver_informe.clicked.connect(self.on_ver_informe)
         self.btn_exportar.clicked.connect(self.on_exportar)
@@ -137,7 +162,7 @@ class MainWindow(QMainWindow):
             if field == "FECHA RADICADO":
                 edit: QLineEdit | QDateEdit = QDateEdit()
                 edit.setCalendarPopup(True)
-                edit.setDisplayFormat("yyyy-MM-dd")
+                edit.setDisplayFormat(DISPLAY_FMT)
                 edit.setMaximumWidth(130)
             else:
                 edit = QLineEdit()
@@ -164,19 +189,26 @@ class MainWindow(QMainWindow):
             if col_name in RELATION_COLUMNS:
                 col_idx = 1 + RELATION_COLUMNS.index(col_name)
                 self.table.setItemDelegateForColumn(col_idx, self._date_delegate)
-        layout.addWidget(self.table, stretch=1)
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(self.table)
 
+        result_box = QGroupBox("Resultado RIPS")
+        result_layout = QVBoxLayout(result_box)
         self.txt_validacion = QTextEdit()
         self.txt_validacion.setReadOnly(True)
         self.txt_validacion.setPlaceholderText("Resultado de validación RIPS…")
-        self.txt_validacion.setMaximumHeight(140)
-        layout.addWidget(self.txt_validacion)
+        self.txt_validacion.setMinimumHeight(220)
+        result_layout.addWidget(self.txt_validacion)
+        splitter.addWidget(result_box)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        layout.addWidget(splitter, stretch=1)
 
     def _admin_values(self) -> dict[str, str]:
         values: dict[str, str] = {}
         for key, widget in self.admin_inputs.items():
             if isinstance(widget, QDateEdit):
-                values[key] = widget.date().toString("yyyy-MM-dd")
+                values[key] = widget.date().toString(DISPLAY_FMT)
             else:
                 values[key] = widget.text().strip()
         return values
@@ -199,6 +231,36 @@ class MainWindow(QMainWindow):
         selected = self._open_rips_picker()
         if selected:
             self._load_paths(selected)
+
+    def on_cargar_prestadores(self) -> None:
+        start = self._last_folder or str(APP_ROOT.parent)
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar archivo de prestadores (NIT / nombre IPS)",
+            start,
+            "Excel/CSV (*.xlsx *.xlsm *.csv *.txt)",
+        )
+        if not path:
+            return
+        self.prestadores = PrestadoresCatalog()
+        count = self.prestadores.load_file(Path(path))
+        if count == 0:
+            QMessageBox.warning(
+                self,
+                "Catálogo prestadores",
+                "No se leyeron filas. Revise columnas NIT y nombre/razón social.",
+            )
+            return
+        self.lbl_prestadores.setText(
+            f"Prestadores: {len(self.prestadores)} filas ({Path(path).name})"
+        )
+        if self.documents:
+            self._apply_factura_index_to_grid()
+        QMessageBox.information(
+            self,
+            "Prestadores cargados",
+            f"Se cargaron {count} filas desde:\n{path}",
+        )
 
     def on_cargar_facturas(self) -> None:
         folder = QFileDialog.getExistingDirectory(
@@ -269,25 +331,30 @@ class MainWindow(QMainWindow):
         self.loaded_files = json_paths
         skipped_dupes = max(0, len(paths) - len(json_paths))
 
-        work_dirs: set[Path] = set()
+        work_dirs: set[Path] = {APP_ROOT, Path.cwd()}
+        if self._last_folder:
+            work_dirs.add(Path(self._last_folder))
         for jp in json_paths:
             work_dirs.add(jp.parent)
-            if jp.parent.name.lower() in ("rips", "json", "entrada"):
-                work_dirs.add(jp.parent.parent)
+            work_dirs.add(jp.parent.parent)
         self.prestadores = load_prestadores_catalog(work_dirs)
-        self.lbl_prestadores.setText(
-            f"Prestadores: {len(self.prestadores)}"
-            + (f" ({self.prestadores.source_file})" if self.prestadores.source_file else "")
-        )
+        if self.prestadores.source_file:
+            self.lbl_prestadores.setText(
+                f"Prestadores: {len(self.prestadores)} filas ({Path(self.prestadores.source_file).name})"
+            )
+        else:
+            self.lbl_prestadores.setText("Prestadores: no se encontró docs/")
 
         directories = {jp.parent for jp in json_paths}
         self.factura_index.scan_directories(directories)
 
+        failed_rips: list[str] = []
         for jp in json_paths:
             data, err = load_json_file(jp)
             source = jp.name
             self._json_path_by_source[source] = jp
-            if err or not isinstance(data, dict):
+            if err or not isinstance(data, dict) or not is_rips_payload(data):
+                failed_rips.append(source)
                 self.documents.append((source, {}, []))
                 continue
             recs = build_records_from_rips(
@@ -313,9 +380,16 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "Carga completada",
+            f"Versión módulo: {self._app_version}\n"
             f"Archivos RIPS cargados: {len(self._json_path_by_source)}\n"
-            f"Registros en grilla: {len(self.records)}"
-            + (f"\nDuplicados omitidos: {skipped_dupes}" if skipped_dupes else ""),
+            f"Registros en grilla: {len(self.records)}\n"
+            f"Prestadores en índice: {len(self.prestadores)}"
+            + (f"\nDuplicados omitidos: {skipped_dupes}" if skipped_dupes else "")
+            + (
+                f"\n\nArchivos no RIPS (omitidos): {', '.join(failed_rips)}"
+                if failed_rips
+                else ""
+            ),
         )
 
     def _refresh_table(self) -> None:
@@ -348,10 +422,10 @@ class MainWindow(QMainWindow):
                 self.table.setItem(row, col, item)
         if "Nombre" in RELATION_COLUMNS:
             nombre_col = 1 + RELATION_COLUMNS.index("Nombre")
-            self.table.setColumnWidth(nombre_col, 280)
-            self.table.horizontalHeader().setSectionResizeMode(
-                nombre_col, QHeaderView.ResizeMode.Interactive
-            )
+            self.table.setColumnWidth(nombre_col, 360)
+        if "NombreIps" in RELATION_COLUMNS:
+            ips_col = 1 + RELATION_COLUMNS.index("NombreIps")
+            self.table.setColumnWidth(ips_col, 300)
         self.table.blockSignals(False)
 
     def _apply_admin_to_row(self, row: int) -> bool:

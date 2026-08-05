@@ -1,0 +1,34 @@
+ACTUALIZACION MODULO RIPS — LEER PRIMERO
+=========================================
+
+Si "todo sigue igual", casi siempre esta ejecutando una CARPETA VIEJA.
+
+PASOS EN WINDOWS (importante: reemplazar carpeta completa)
+
+1. Cierre la aplicacion si esta abierta.
+
+2. Descargue el ZIP actualizado:
+   https://github.com/jcmencop2021/validarips/archive/refs/heads/cursor/modulo-rips-948-c80a.zip
+
+3. Descomprima el ZIP.
+
+4. Copie la carpeta MODULO_RIPS_948 del ZIP y REEMPLACE por completo
+   la que usa hoy (por ejemplo D:\MODULORIPS\MODULO_RIPS_948).
+   No mezcle archivos sueltos: reemplace toda la carpeta.
+
+5. Mantenga SU carpeta docs\ con el archivo de prestadores:
+   D:\MODULORIPS\docs\prestadores.xlsx
+   (puede quedar al lado de MODULO_RIPS_948, no dentro del modulo)
+
+6. Abra CMD en la carpeta MODULO_RIPS_948 nueva y ejecute:
+   python app.py
+
+7. COMPRUEBE: al abrir debe verse un cartel NARANJA arriba:
+   "VERSION 1.0.6" y la ruta del modulo.
+
+8. Doble clic en VERIFICAR_INSTALACION.bat (dentro de MODULO_RIPS_948)
+   debe mostrar version 1.0.6
+
+Si NO ve el cartel naranja 1.0.6, NO esta en la version nueva.
+
+Boton nuevo: "Catálogo prestadores" — seleccione su archivo Excel/CSV manualmente.
