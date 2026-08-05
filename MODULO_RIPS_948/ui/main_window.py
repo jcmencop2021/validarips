@@ -7,7 +7,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
-    QDateEdit,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -28,7 +27,7 @@ from PySide6.QtWidgets import (
 from core.dedupe import dedupe_documents, dedupe_path_strings, dedupe_records
 from core.excel_export import ensure_template, export_to_excel
 from core.factura_index import FacturaIndex, is_rips_payload
-from core.date_fmt import DISPLAY_FMT
+from core.date_fmt import DATE_PLACEHOLDER, format_date_display, normalize_typed_date
 from core.loader import (
     build_records_from_rips,
     discover_json_paths,
@@ -39,11 +38,40 @@ from core.prestadores import PrestadoresCatalog, load_prestadores_catalog
 from core.version import BUILD_ID, get_version
 from core.validator import ValidationReport, validate_all
 from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecord
+from ui.date_delegate import GRID_DATE_COLUMNS, DateLineDelegate
 from ui.factura_select_dialog import FacturaSelectDialog
-from ui.json_select_dialog import DateTableDelegate, GRID_DATE_COLUMNS, RipsFolderDialog
+from ui.json_select_dialog import RipsFolderDialog
 
 APP_ROOT = Path(__file__).resolve().parent.parent
-FIELD_WIDTH = 110
+
+# Anchos iniciales (px): fechas/periodo angostos, nombres amplios
+COL_WIDTH: dict[str, int] = {
+    "CAJA": 52,
+    "RADICADO": 72,
+    "FECHA RADICADO": 86,
+    "PERIODO FACTURADO": 68,
+    "Fecha factura": 86,
+    "FECHAING": 86,
+    "FECHAFIN": 86,
+    "CodIps": 72,
+    "NombreIps": 200,
+    "NroFac": 88,
+    "TipoIde": 52,
+    "NumIde": 96,
+    "Nombre": 300,
+    "VlorNeto": 78,
+    "SERVICIO": 68,
+    "REL": 42,
+    "NACION": 88,
+}
+COL_EXPORT_WIDTH = 54
+ADMIN_FIELD_WIDTH: dict[str, int] = {
+    "CAJA": 72,
+    "REL": 56,
+    "RADICADO": 88,
+    "FECHA RADICADO": 92,
+    "PERIODO FACTURADO": 72,
+}
 
 
 class MainWindow(QMainWindow):
@@ -53,7 +81,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._app_version = get_version()
         self.setWindowTitle(f"Módulo RIPS — Relación Res. 948 — v{self._app_version}")
-        self.resize(1280, 860)
+        self.resize(1320, 860)
 
         self._last_folder = ""
         self.factura_index = FacturaIndex()
@@ -66,17 +94,6 @@ class MainWindow(QMainWindow):
         self.loaded_files: list[Path] = []
 
         self._build_ui()
-        self._show_version_banner()
-
-    def _show_version_banner(self) -> None:
-        QMessageBox.information(
-            self,
-            f"Versión {self._app_version}",
-            f"Módulo instalado desde:\n{APP_ROOT}\n\n"
-            f"Build: {BUILD_ID}\n\n"
-            "Si no ve el cartel naranja arriba con la misma versión,\n"
-            "está ejecutando una carpeta antigua. Lea LEEME_ACTUALIZACION.txt",
-        )
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -159,14 +176,14 @@ class MainWindow(QMainWindow):
         for field in ADMIN_FIELDS:
             col = QVBoxLayout()
             lbl = QLabel(labels.get(field, field))
+            edit = QLineEdit()
+            w = ADMIN_FIELD_WIDTH.get(field, 88)
+            edit.setMaximumWidth(w)
             if field == "FECHA RADICADO":
-                edit: QLineEdit | QDateEdit = QDateEdit()
-                edit.setCalendarPopup(True)
-                edit.setDisplayFormat(DISPLAY_FMT)
-                edit.setMaximumWidth(130)
-            else:
-                edit = QLineEdit()
-                edit.setMaximumWidth(FIELD_WIDTH)
+                edit.setPlaceholderText(DATE_PLACEHOLDER)
+                edit.setInputMask("00/00/0000;_")
+            elif field == "PERIODO FACTURADO":
+                edit.setPlaceholderText("AAAA-MM")
             self.admin_inputs[field] = edit
             col.addWidget(lbl)
             col.addWidget(edit)
@@ -181,10 +198,17 @@ class MainWindow(QMainWindow):
         self.table = QTableWidget(0, 1 + len(RELATION_COLUMNS))
         headers = ["Aplicar"] + RELATION_COLUMNS
         self.table.setHorizontalHeaderLabels(headers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        self.table.setColumnWidth(self.COL_EXPORT, COL_EXPORT_WIDTH)
+        for name, width in COL_WIDTH.items():
+            if name in RELATION_COLUMNS:
+                col_idx = 1 + RELATION_COLUMNS.index(name)
+                self.table.setColumnWidth(col_idx, width)
         self.table.setAlternatingRowColors(True)
         self.table.cellChanged.connect(self.on_cell_changed)
-        self._date_delegate = DateTableDelegate(self.table)
+        self._date_delegate = DateLineDelegate(self.table)
         for col_name in GRID_DATE_COLUMNS:
             if col_name in RELATION_COLUMNS:
                 col_idx = 1 + RELATION_COLUMNS.index(col_name)
@@ -207,11 +231,19 @@ class MainWindow(QMainWindow):
     def _admin_values(self) -> dict[str, str]:
         values: dict[str, str] = {}
         for key, widget in self.admin_inputs.items():
-            if isinstance(widget, QDateEdit):
-                values[key] = widget.date().toString(DISPLAY_FMT)
-            else:
-                values[key] = widget.text().strip()
+            text = widget.text().strip()
+            if key == "FECHA RADICADO" and text:
+                text = normalize_typed_date(text)
+            values[key] = text
         return values
+
+    def _display_cell_value(self, col_name: str, value: object) -> str:
+        if value is None:
+            return ""
+        text = str(value)
+        if col_name in GRID_DATE_COLUMNS:
+            return format_date_display(text)
+        return text
 
     def _open_rips_picker(self) -> list[str]:
         dialog = RipsFolderDialog(self._last_folder, self)
@@ -409,7 +441,8 @@ class MainWindow(QMainWindow):
 
             for col, name in enumerate(RELATION_COLUMNS, start=1):
                 value = rec.values.get(name, "")
-                item = QTableWidgetItem("" if value is None else str(value))
+                display = self._display_cell_value(name, value)
+                item = QTableWidgetItem(display)
                 if name in ADMIN_FIELDS and rec.admin_applied:
                     item.setFlags(Qt.ItemFlag.ItemIsSelectable)
                     item.setBackground(QColor(230, 230, 230))
@@ -420,12 +453,6 @@ class MainWindow(QMainWindow):
                         | Qt.ItemFlag.ItemIsEnabled
                     )
                 self.table.setItem(row, col, item)
-        if "Nombre" in RELATION_COLUMNS:
-            nombre_col = 1 + RELATION_COLUMNS.index("Nombre")
-            self.table.setColumnWidth(nombre_col, 360)
-        if "NombreIps" in RELATION_COLUMNS:
-            ips_col = 1 + RELATION_COLUMNS.index("NombreIps")
-            self.table.setColumnWidth(ips_col, 300)
         self.table.blockSignals(False)
 
     def _apply_admin_to_row(self, row: int) -> bool:
@@ -466,7 +493,14 @@ class MainWindow(QMainWindow):
             col_name = RELATION_COLUMNS[column - 1]
             cell = self.table.item(row, column)
             if cell:
-                self.records[row].values[col_name] = cell.text()
+                text = cell.text()
+                if col_name in GRID_DATE_COLUMNS:
+                    text = normalize_typed_date(text)
+                    if text != cell.text():
+                        self.table.blockSignals(True)
+                        cell.setText(text)
+                        self.table.blockSignals(False)
+                self.records[row].values[col_name] = text
 
     def on_aplicar_todos(self) -> None:
         admin = self._admin_values()
