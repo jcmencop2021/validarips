@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
-    QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
@@ -41,30 +40,31 @@ from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecor
 from ui.date_delegate import GRID_DATE_COLUMNS, DateLineDelegate
 from ui.factura_select_dialog import FacturaSelectDialog
 from ui.json_select_dialog import RipsFolderDialog
+from ui.relation_table import RelationTable
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 
 # Anchos iniciales (px): fechas/periodo angostos, nombres amplios
 COL_WIDTH: dict[str, int] = {
-    "CAJA": 52,
-    "RADICADO": 72,
-    "FECHA RADICADO": 86,
-    "PERIODO FACTURADO": 68,
-    "Fecha factura": 86,
-    "FECHAING": 86,
-    "FECHAFIN": 86,
-    "CodIps": 72,
-    "NombreIps": 200,
-    "NroFac": 88,
-    "TipoIde": 52,
-    "NumIde": 96,
-    "Nombre": 300,
-    "VlorNeto": 78,
-    "SERVICIO": 68,
-    "REL": 42,
-    "NACION": 88,
+    "CAJA": 46,
+    "RADICADO": 64,
+    "FECHA RADICADO": 76,
+    "PERIODO FACTURADO": 62,
+    "Fecha factura": 76,
+    "FECHAING": 76,
+    "FECHAFIN": 76,
+    "CodIps": 64,
+    "NombreIps": 175,
+    "NroFac": 78,
+    "TipoIde": 46,
+    "NumIde": 88,
+    "Nombre": 220,
+    "VlorNeto": 68,
+    "SERVICIO": 58,
+    "REL": 36,
+    "NACION": 76,
 }
-COL_EXPORT_WIDTH = 54
+COL_EXPORT_WIDTH = 48
 ADMIN_FIELD_WIDTH: dict[str, int] = {
     "CAJA": 72,
     "REL": 56,
@@ -181,9 +181,6 @@ class MainWindow(QMainWindow):
             edit.setMaximumWidth(w)
             if field == "FECHA RADICADO":
                 edit.setPlaceholderText(DATE_PLACEHOLDER)
-                edit.setInputMask("00/00/0000;_")
-            elif field == "PERIODO FACTURADO":
-                edit.setPlaceholderText("AAAA-MM")
             self.admin_inputs[field] = edit
             col.addWidget(lbl)
             col.addWidget(edit)
@@ -195,7 +192,15 @@ class MainWindow(QMainWindow):
         header_row.addWidget(self.btn_aplicar_todos)
         layout.addWidget(header_box)
 
-        self.table = QTableWidget(0, 1 + len(RELATION_COLUMNS))
+        self.table = RelationTable(0, 1 + len(RELATION_COLUMNS))
+        grid_font = QFont(self.table.font())
+        grid_font.setPointSize(8)
+        self.table.setFont(grid_font)
+        hdr = self.table.horizontalHeader()
+        hdr_font = QFont(hdr.font())
+        hdr_font.setPointSize(8)
+        hdr.setFont(hdr_font)
+        hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
         headers = ["Aplicar"] + RELATION_COLUMNS
         self.table.setHorizontalHeaderLabels(headers)
         header = self.table.horizontalHeader()

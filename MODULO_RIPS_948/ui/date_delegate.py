@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtGui import QRegularExpressionValidator
-from PySide6.QtCore import Qt, QRegularExpression
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLineEdit, QStyledItemDelegate, QWidget
 
 from core.date_fmt import DATE_PLACEHOLDER, normalize_typed_date
@@ -17,15 +16,12 @@ GRID_DATE_COLUMNS: frozenset[str] = frozenset(
 
 
 class DateLineDelegate(QStyledItemDelegate):
-    """Fecha como texto dd/mm/aaaa (sin calendario)."""
+    """Fecha como texto dd/mm/aaaa (sin calendario ni máscara que bloquee tecleo)."""
 
     def createEditor(self, parent: QWidget, option, index):  # noqa: ANN001
         editor = QLineEdit(parent)
         editor.setPlaceholderText(DATE_PLACEHOLDER)
-        editor.setInputMask("00/00/0000;_")
-        rx = QRegularExpression(r"^\d{2}/\d{2}/\d{4}$")
-        editor.setValidator(QRegularExpressionValidator(rx, editor))
-        editor.setMaximumWidth(95)
+        editor.setClearButtonEnabled(True)
         return editor
 
     def setEditorData(self, editor, index) -> None:  # noqa: ANN001
@@ -33,8 +29,6 @@ class DateLineDelegate(QStyledItemDelegate):
         editor.setText(text)
 
     def setModelData(self, editor, model, index) -> None:  # noqa: ANN001
-        model.setData(
-            index,
-            normalize_typed_date(editor.text()),
-            Qt.ItemDataRole.EditRole,
-        )
+        raw = editor.text().strip()
+        value = normalize_typed_date(raw) if raw else ""
+        model.setData(index, value, Qt.ItemDataRole.EditRole)
