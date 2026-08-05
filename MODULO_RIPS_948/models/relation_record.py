@@ -43,6 +43,7 @@ class RelationRecord:
     values: dict[str, Any] = field(default_factory=dict)
     admin_applied: bool = False
     export_selected: bool = False
+    _admin_backup: dict[str, Any] = field(default_factory=dict, repr=False)
     validation_messages: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -50,10 +51,26 @@ class RelationRecord:
             self.values.setdefault(col, "")
 
     def apply_admin(self, admin: dict[str, str]) -> None:
+        if not self.admin_applied:
+            self._admin_backup = {
+                key: self.values.get(key, "") for key in ADMIN_FIELDS
+            }
         for key in ADMIN_FIELDS:
             if admin.get(key):
                 self.values[key] = admin[key]
         self.admin_applied = True
+
+    def revert_admin(self) -> None:
+        """Quita datos del encabezado aplicados con Aplicar y restaura valores previos."""
+        if self._admin_backup:
+            for key, prev in self._admin_backup.items():
+                self.values[key] = prev
+        else:
+            for key in ADMIN_FIELDS:
+                self.values[key] = ""
+        self._admin_backup = {}
+        self.admin_applied = False
+        self.export_selected = False
 
     def to_row(self) -> list[Any]:
         return [self.values.get(col, "") for col in RELATION_COLUMNS]

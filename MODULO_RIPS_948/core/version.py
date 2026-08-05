@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parent.parent
-BUILD_ID = "2026-08-05-007"
+BUILD_ID = "2026-08-05-008"
 
 
 def get_version() -> str:

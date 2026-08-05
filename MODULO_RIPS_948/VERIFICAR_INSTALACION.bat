@@ -20,5 +20,5 @@ echo   .venv\Scripts\activate
 echo   pip install -r requirements.txt
 echo   python app.py
 echo.
-echo En la ventana debe verse el cartel naranja: VERSION 1.0.7
+echo En la ventana debe verse el cartel naranja: VERSION 1.0.8
 pause

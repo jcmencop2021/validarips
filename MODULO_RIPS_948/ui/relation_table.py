@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
-from PySide6.QtWidgets import QTableWidget
+from PySide6.QtWidgets import QAbstractItemView, QTableWidget
 
 
 class RelationTable(QTableWidget):
@@ -14,6 +14,10 @@ class RelationTable(QTableWidget):
         super().__init__(*args, **kwargs)
         self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
+        self.setEditTriggers(
+            QAbstractItemView.EditTrigger.CurrentChanged
+            | QAbstractItemView.EditTrigger.AnyKeyPressed
+        )
         copy_action = QAction("Copiar", self)
         copy_action.setShortcut(QKeySequence.StandardKey.Copy)
         copy_action.triggered.connect(self.copy_selection_to_clipboard)

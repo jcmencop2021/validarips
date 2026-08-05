@@ -491,7 +491,8 @@ class MainWindow(QMainWindow):
                     self.records[row].export_selected = False
                     self.table.blockSignals(False)
             else:
-                self.records[row].export_selected = False
+                self.records[row].revert_admin()
+                self._refresh_table()
             self._update_stats()
             return
         if column > 0:

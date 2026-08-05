@@ -24,11 +24,11 @@ PASOS EN WINDOWS (importante: reemplazar carpeta completa)
    python app.py
 
 7. COMPRUEBE: al abrir debe verse un cartel NARANJA arriba:
-   "VERSION 1.0.7" y la ruta del modulo.
+   "VERSION 1.0.8" y la ruta del modulo.
 
 8. Doble clic en VERIFICAR_INSTALACION.bat (dentro de MODULO_RIPS_948)
-   debe mostrar version 1.0.7
+   debe mostrar version 1.0.8
 
-Si NO ve el cartel naranja 1.0.7, NO esta en la version nueva.
+Si NO ve el cartel naranja 1.0.8, NO esta en la version nueva.
 
 Boton nuevo: "Catálogo prestadores" — seleccione su archivo Excel/CSV manualmente.
