@@ -10,7 +10,7 @@ except ImportError:  # pragma: no cover
     orjson = None  # type: ignore
 
 from core.dedupe import dedupe_documents, dedupe_records
-from core.factura_index import FacturaIndex, FacturaMetadata, normalize_num_factura
+from core.prestadores import PrestadoresCatalog, load_prestadores_catalog
 from core.fev_xml import find_companion_xml, parse_fev_xml
 from core.json_extract import (
     extract_fecha_factura,
@@ -172,6 +172,7 @@ def build_records_from_rips(
     source_file: str,
     json_path: Path | None = None,
     factura_index: FacturaIndex | None = None,
+    prestadores: PrestadoresCatalog | None = None,
 ) -> list[RelationRecord]:
     full_doc = data
     rips = unwrap_rips_root(data)
@@ -190,6 +191,8 @@ def build_records_from_rips(
 
     fecha_factura = extract_fecha_factura(full_doc, rips)
     nombre_ips = extract_nombre_ips(full_doc, rips)
+    if prestadores and nit:
+        nombre_ips = prestadores.get(nit) or nombre_ips
     if factura_meta:
         fecha_factura = fecha_factura or factura_meta.fecha_factura
         nombre_ips = nombre_ips or factura_meta.nombre_ips
@@ -244,12 +247,15 @@ def reload_records_with_facturas(
     documents: list[tuple[str, dict, list[RelationRecord]]],
     json_paths_by_source: dict[str, Path],
     factura_index: FacturaIndex,
+    prestadores: PrestadoresCatalog | None = None,
 ) -> tuple[list[RelationRecord], list[tuple[str, dict, list[RelationRecord]]]]:
     all_records: list[RelationRecord] = []
     new_docs: list[tuple[str, dict, list[RelationRecord]]] = []
     for source, data, _old in documents:
         jp = json_paths_by_source.get(source)
-        recs = build_records_from_rips(data, source, jp, factura_index)
+        recs = build_records_from_rips(
+            data, source, jp, factura_index, prestadores
+        )
         all_records.extend(recs)
         new_docs.append((source, data, recs))
     all_records, _ = dedupe_records(all_records)

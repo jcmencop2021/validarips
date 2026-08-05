@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from core.dedupe import dedupe_path_strings
 from core.factura_index import is_rips_payload
 from core.loader import load_json_file
 
@@ -82,4 +83,4 @@ class JsonSelectDialog(QDialog):
             item = self.list_widget.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 paths.append(item.data(Qt.ItemDataRole.UserRole))
-        return paths
+        return dedupe_path_strings(paths)

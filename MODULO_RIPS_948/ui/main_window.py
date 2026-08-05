@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.dedupe import dedupe_documents, dedupe_records
+from core.dedupe import dedupe_documents, dedupe_path_strings, dedupe_records
 from core.excel_export import ensure_template, export_to_excel
 from core.factura_index import FacturaIndex
 from core.loader import (
@@ -32,6 +32,7 @@ from core.loader import (
     load_json_file,
     reload_records_with_facturas,
 )
+from core.prestadores import PrestadoresCatalog, load_prestadores_catalog
 from core.validator import ValidationReport, validate_all
 from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecord
 from ui.factura_select_dialog import FacturaSelectDialog
@@ -51,6 +52,7 @@ class MainWindow(QMainWindow):
 
         self._last_folder = ""
         self.factura_index = FacturaIndex()
+        self.prestadores = PrestadoresCatalog()
         self._ingested_factura_files: set[str] = set()
         self._json_path_by_source: dict[str, Path] = {}
         self.records: list[RelationRecord] = []
@@ -101,6 +103,7 @@ class MainWindow(QMainWindow):
         self.lbl_total = QLabel("Valor total: 0")
         self.lbl_export = QLabel("Marcados Excel: 0")
         self.lbl_factura_idx = QLabel("Facturas (datos FEV): 0")
+        self.lbl_prestadores = QLabel("Prestadores: 0")
         self.lbl_resultado = QLabel("Resultado RIPS: —")
         self.lbl_resultado.setStyleSheet("font-weight: bold;")
         for w in (
@@ -109,6 +112,7 @@ class MainWindow(QMainWindow):
             self.lbl_total,
             self.lbl_export,
             self.lbl_factura_idx,
+            self.lbl_prestadores,
             self.lbl_resultado,
         ):
             status_layout.addWidget(w)
@@ -222,37 +226,65 @@ class MainWindow(QMainWindow):
             self.documents,
             self._json_path_by_source,
             self.factura_index,
+            self.prestadores,
         )
         self._refresh_table()
         self._update_stats()
         self.lbl_factura_idx.setText(f"Facturas (datos FEV): {len(self.factura_index)}")
 
     def _load_paths(self, paths: list[str]) -> None:
+        paths = dedupe_path_strings(paths)
         json_paths = discover_json_paths(paths)
         if not json_paths:
-            QMessageBox.warning(self, "Sin archivos", "No se encontraron archivos .json.")
+            QMessageBox.warning(self, "Sin archivos", "No se encontraron archivos RIPS (.json).")
             return
+
+        seen_files: set[str] = set()
+        unique_json_paths: list[Path] = []
+        for jp in json_paths:
+            key = str(jp.resolve())
+            if key in seen_files:
+                continue
+            seen_files.add(key)
+            unique_json_paths.append(jp)
+        json_paths = unique_json_paths
 
         self.records.clear()
         self.documents.clear()
         self._json_path_by_source.clear()
         self.loaded_files = json_paths
-        skipped_dupes = 0
+        skipped_dupes = len(paths) - len(json_paths)
+
+        work_dirs: set[Path] = set()
+        for jp in json_paths:
+            work_dirs.add(jp.parent)
+            if jp.parent.name.lower() in ("rips", "json", "entrada"):
+                work_dirs.add(jp.parent.parent)
+        self.prestadores = load_prestadores_catalog(work_dirs)
+        self.lbl_prestadores.setText(
+            f"Prestadores: {len(self.prestadores)}"
+            + (f" ({self.prestadores.source_file})" if self.prestadores.source_file else "")
+        )
 
         directories = {jp.parent for jp in json_paths}
         self.factura_index.scan_directories(directories)
 
         for jp in json_paths:
-            data, err = load_json_file(jp)
-            source = jp.name
-            if source in self._json_path_by_source:
+            resolved = str(jp.resolve())
+            if resolved in seen_files:
                 skipped_dupes += 1
                 continue
+            seen_files.add(resolved)
+
+            data, err = load_json_file(jp)
+            source = jp.name
             self._json_path_by_source[source] = jp
             if err or not isinstance(data, dict):
                 self.documents.append((source, {}, []))
                 continue
-            recs = build_records_from_rips(data, source, jp, self.factura_index)
+            recs = build_records_from_rips(
+                data, source, jp, self.factura_index, self.prestadores
+            )
             self.records.extend(recs)
             self.documents.append((source, data, recs))
 

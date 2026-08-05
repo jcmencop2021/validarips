@@ -1,24 +1,25 @@
 from __future__ import annotations
 
-from core.factura_index import is_rips_payload
 from models.relation_record import RelationRecord
 
 
-def record_dedupe_key(rec: RelationRecord) -> tuple[str, str, str, str]:
-    return (
-        rec.source_file,
-        str(rec.values.get("NroFac") or ""),
-        str(rec.values.get("TipoIde") or ""),
-        str(rec.values.get("NumIde") or ""),
-    )
+def record_dedupe_key(rec: RelationRecord) -> tuple[str, str, str]:
+    """Una fila por factura + paciente (sin importar archivo origen)."""
+    nro = str(rec.values.get("NroFac") or "").upper().replace(" ", "")
+    tipo = str(rec.values.get("TipoIde") or "").upper().strip()
+    num = str(rec.values.get("NumIde") or "").upper().strip()
+    return (nro, tipo, num)
 
 
 def dedupe_records(records: list[RelationRecord]) -> tuple[list[RelationRecord], int]:
-    seen: set[tuple[str, str, str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     unique: list[RelationRecord] = []
     skipped = 0
     for rec in records:
         key = record_dedupe_key(rec)
+        if not key[0] and not key[2]:
+            unique.append(rec)
+            continue
         if key in seen:
             skipped += 1
             continue
@@ -42,5 +43,13 @@ def dedupe_documents(
     return unique_docs, skipped
 
 
-def is_rips_json_data(data: dict) -> bool:
-    return is_rips_payload(data)
+def dedupe_path_strings(paths: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for raw in paths:
+        key = str(raw)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(raw)
+    return unique

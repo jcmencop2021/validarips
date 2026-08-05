@@ -48,7 +48,25 @@ python app.py
 | **Nombre IPS** | No viene en el bloque `usuarios`. Se toma de metadatos del emisor en JSON (`razonSocial`, `nombrePrestador`, etc.) o del **XML FEV** (`RegistrationName` del prestador). |
 | **Nombre paciente** | El bloque usuario RIPS (U01–U12) **no incluye nombre** en el Anexo Técnico 1. Si su software lo envía, se leen campos como `primerNombre`/`primerApellido` o objeto `nombre` tipo FEV. |
 
-Coloque el **XML o JSON de la factura** en la misma carpeta que los RIPS, o use el botón **Cargar datos factura**. El cruce se hace por **número de factura** (`numFactura` en RIPS = `numero_documento` / `ID` en FEV).
+Coloque el **XML o JSON de la factura** en la misma carpeta que los RIPS, o use **Cargar datos factura**.
+
+### Catálogo de prestadores (nombre IPS)
+
+En la carpeta de trabajo cree **`docs/`** y coloque el archivo de prestadores (Excel, CSV o TXT), por ejemplo:
+
+`docs/prestadores.xlsx`
+
+El módulo cruza el **NIT** (`numDocumentoIdObligado` del RIPS) con la columna NIT del archivo y completa **NombreIps**. Columnas reconocidas:
+
+- NIT: `nit`, `numDocumentoIdObligado`, `identificacion`, etc.
+- Nombre: `nombre`, `razon_social`, `nombrePrestador`, etc.
+
+Si los JSON están en una subcarpeta (`rips/`), también busca `docs/` en la carpeta padre.
+
+### Sin duplicados
+
+- Solo carga JSON RIPS (con `usuarios`).
+- Una sola fila por **factura + tipo documento + número documento**, aunque el mismo paciente aparezca en varios archivos.
 
 ### Orden recomendado
 
