@@ -1,0 +1,26 @@
+EJECUTABLE ModuloRIPS948 (Windows)
+==================================
+
+OPCION A - Descargar ya compilado (recomendado)
+-----------------------------------------------
+1. En GitHub: pestaña "Actions" del repositorio validarips.
+2. Abra el workflow "Build Windows EXE" (ultima ejecucion en verde).
+3. En "Artifacts", descargue "ModuloRIPS948-Windows".
+4. Extraiga ModuloRIPS948.exe a su carpeta de trabajo (ej. D:\MODULORIPS).
+5. Doble clic en ModuloRIPS948.exe. No necesita instalar Python.
+
+OPCION B - Generar el .exe en su PC
+-----------------------------------
+1. Instale Python 3.10 o superior (python.org), marque "Add to PATH".
+2. Abra CMD en la carpeta MODULO_RIPS_948.
+3. Ejecute: scripts\build_exe.bat
+4. El archivo queda en: dist\ModuloRIPS948.exe
+
+NOTAS
+-----
+- El .exe es solo para Windows 10/11 de 64 bits.
+- Puede crear la carpeta docs\ junto al .exe para el catalogo de prestadores.
+- La plantilla Excel se crea automaticamente en templates\ junto al .exe.
+- Windows Defender a veces avisa en apps nuevas; es normal si usted mismo la genero.
+
+Versión del módulo: ver config.json o el cartel naranja al abrir la app.

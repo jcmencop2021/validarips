@@ -20,6 +20,9 @@ class RelationTable(QTableWidget):
         )
         copy_action = QAction("Copiar", self)
         copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.setToolTip(
+            "Copia las celdas seleccionadas al portapapeles (tabuladores) para pegar en Excel."
+        )
         copy_action.triggered.connect(self.copy_selection_to_clipboard)
         self.addAction(copy_action)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)

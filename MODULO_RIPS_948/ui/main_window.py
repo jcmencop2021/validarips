@@ -34,6 +34,7 @@ from core.loader import (
     reload_records_with_facturas,
 )
 from core.prestadores import PrestadoresCatalog, load_prestadores_catalog
+from core.paths import get_module_root, template_path
 from core.version import BUILD_ID, get_version
 from core.validator import ValidationReport, validate_all
 from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecord
@@ -42,7 +43,7 @@ from ui.factura_select_dialog import FacturaSelectDialog
 from ui.json_select_dialog import RipsFolderDialog
 from ui.relation_table import RelationTable
 
-APP_ROOT = Path(__file__).resolve().parent.parent
+APP_ROOT = get_module_root()
 
 # Anchos iniciales (px): fechas/periodo angostos, nombres amplios
 COL_WIDTH: dict[str, int] = {
@@ -117,6 +118,33 @@ class MainWindow(QMainWindow):
         self.btn_ver_informe = QPushButton("Ver resultado / errores")
         self.btn_exportar = QPushButton("Exportar Excel")
         self.btn_descargar = QPushButton("Descargar informe")
+        self._tooltips = {
+            self.btn_buscar: (
+                "Abre el selector de carpeta y archivos JSON RIPS para cargarlos en la grilla."
+            ),
+            self.btn_carpeta: (
+                "Igual que «Buscar RIPS»: elige la carpeta de trabajo y marca los archivos .json a importar."
+            ),
+            self.btn_factura: (
+                "Carga XML o JSON de factura electrónica (FEV) para completar fecha de factura, "
+                "nombre de la IPS y nombre del paciente cuando el RIPS no los trae."
+            ),
+            self.btn_prestadores: (
+                "Carga un Excel o CSV con NIT y nombre de prestadores para completar la columna NombreIps."
+            ),
+            self.btn_validar: (
+                "Valida los archivos RIPS cargados según la Resolución 948 y muestra el resultado abajo."
+            ),
+            self.btn_ver_informe: (
+                "Abre una ventana con el detalle del último informe de validación (errores y advertencias)."
+            ),
+            self.btn_exportar: (
+                "Genera el archivo Excel de relación solo con las filas que tienen marcado «Aplicar»."
+            ),
+            self.btn_descargar: (
+                "Guarda el informe de validación RIPS en un archivo de texto (.txt)."
+            ),
+        }
         for btn in (
             self.btn_buscar,
             self.btn_carpeta,
@@ -128,6 +156,8 @@ class MainWindow(QMainWindow):
             self.btn_descargar,
         ):
             btn_row.addWidget(btn)
+        for btn, tip in self._tooltips.items():
+            btn.setToolTip(tip)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -188,6 +218,10 @@ class MainWindow(QMainWindow):
         header_row.addStretch()
         self.btn_aplicar_todos = QPushButton("Aplicar a todos")
         self.btn_aplicar_todos.setMaximumWidth(120)
+        self.btn_aplicar_todos.setToolTip(
+            "Copia Caja, REL, Radicado, fecha radicado y periodo del encabezado a todas las filas, "
+            "las marca con «Aplicar» y las incluye en la exportación a Excel."
+        )
         self.btn_aplicar_todos.clicked.connect(self.on_aplicar_todos)
         header_row.addWidget(self.btn_aplicar_todos)
         layout.addWidget(header_box)
@@ -212,6 +246,11 @@ class MainWindow(QMainWindow):
                 col_idx = 1 + RELATION_COLUMNS.index(name)
                 self.table.setColumnWidth(col_idx, width)
         self.table.setAlternatingRowColors(True)
+        self.table.setToolTip(
+            "Grilla de relación. Un clic en una celda para editar. "
+            "Columna Aplicar: marca para exportar (aplica el encabezado); al desmarcar revierte esos datos. "
+            "Ctrl+C copia la selección para pegar en Excel."
+        )
         self.table.cellChanged.connect(self.on_cell_changed)
         self._date_delegate = DateLineDelegate(self.table)
         for col_name in GRID_DATE_COLUMNS:
@@ -590,7 +629,7 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-        template = APP_ROOT / "templates" / "plantilla_relacion.xlsx"
+        template = template_path()
         ensure_template(template)
         export_to_excel(selected, Path(path), template)
         QMessageBox.information(

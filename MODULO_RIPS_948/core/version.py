@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-APP_ROOT = Path(__file__).resolve().parent.parent
-BUILD_ID = "2026-08-05-008"
+from core.paths import config_path
+
+BUILD_ID = "2026-08-05-009"
 
 
 def get_version() -> str:
-    cfg = APP_ROOT / "config.json"
+    cfg = config_path()
     if cfg.is_file():
         try:
             data = json.loads(cfg.read_text(encoding="utf-8"))

@@ -39,7 +39,9 @@ class FacturaSelectDialog(QDialog):
 
         btn_row = QHBoxLayout()
         self.btn_all = QPushButton("Marcar todos")
+        self.btn_all.setToolTip("Selecciona todos los archivos de factura de la lista.")
         self.btn_none = QPushButton("Desmarcar todos")
+        self.btn_none.setToolTip("Deselecciona todos los archivos de factura.")
         btn_row.addWidget(self.btn_all)
         btn_row.addWidget(self.btn_none)
         btn_row.addStretch()

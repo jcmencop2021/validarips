@@ -77,12 +77,27 @@ Si los JSON están en una subcarpeta (`rips/`), también busca `docs/` en la car
 
 ## Generar EXE (Windows)
 
-```bash
-pip install pyinstaller
-pyinstaller --noconfirm --windowed --name ModuloRIPS948 app.py
+**Opción rápida:** en GitHub → **Actions** → workflow **Build Windows EXE** → artifact `ModuloRIPS948-Windows`.
+
+**En su PC:**
+
+```bat
+cd MODULO_RIPS_948
+scripts\build_exe.bat
 ```
 
-El ejecutable queda en `dist/ModuloRIPS948/`. Copie junto a la carpeta `templates/` y `config.json`.
+O manualmente:
+
+```bash
+pip install -r requirements.txt pyinstaller
+python scripts/init_template.py
+pyinstaller --noconfirm --windowed --onefile --name ModuloRIPS948 ^
+  --add-data "config.json;." ^
+  --add-data "templates\plantilla_relacion.xlsx;templates" ^
+  --collect-all PySide6 app.py
+```
+
+El ejecutable queda en `dist/ModuloRIPS948.exe`. No requiere Python en el equipo destino. Vea `EJECUTABLE_WINDOWS.txt`.
 
 ## Estructura de columnas Excel
 
