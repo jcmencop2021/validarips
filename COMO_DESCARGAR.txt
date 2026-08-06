@@ -9,14 +9,16 @@ El programa completo esta en la rama con el modulo.
 
 OPCION 0 - RELEASE OFICIAL (RECOMENDADO - EXE + ZIP)
 ----------------------------------------------------
-https://github.com/jcmencop2021/validarips/releases/tag/v1.2.3
+https://github.com/jcmencop2021/validarips/releases/tag/v1.2.4
 
 Descargue uno de estos archivos:
-  - MODULORIPS_v1.2.3_Windows_completo.zip  (exe + fuente + leeme)
+  - MODULORIPS_v1.2.4_Windows_completo.zip  (exe + fuente + leeme)
   - ModuloRIPS948.exe                         (solo programa Windows)
-  - MODULO_RIPS_948_v1.2.3.zip                (solo carpeta para Python)
+  - MODULO_RIPS_948_v1.2.4.zip                (solo carpeta para Python)
 
-Release anterior (v1.2.2): .../releases/tag/v1.2.2
+Novedad v1.2.4: carga carpeta RIPS 3374 (CTxxxx) recursiva en subcarpetas.
+
+Release anterior (v1.2.3): .../releases/tag/v1.2.3
 
 OPCION 1 - ENLACE DIRECTO AL ZIP (copie y pegue en el navegador)
 ----------------------------------------------------------------
@@ -62,6 +64,6 @@ python -m pip install -r requirements.txt
 python scripts\init_template.py
 python app.py
 
-Verifique cartel naranja: VERSION 1.2.3 o superior.
+Verifique cartel naranja: VERSION 1.2.4 o superior.
 
 Ayuda: jcmencop2021 en GitHub / issues del repositorio validarips
