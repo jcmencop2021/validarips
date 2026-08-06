@@ -1,0 +1,56 @@
+================================================================================
+  COMO DESCARGAR E INSTALAR EL MODULO RIPS (si "Codigo > ZIP" no le funciona)
+================================================================================
+
+PROBLEMA FRECUENTE
+------------------
+Si descarga desde la rama "main" antigua, solo llega un README.
+El programa completo esta en la rama con el modulo.
+
+OPCION 1 - ENLACE DIRECTO AL ZIP (copie y pegue en el navegador)
+----------------------------------------------------------------
+https://github.com/jcmencop2021/validarips/archive/refs/heads/cursor/modulo-rips-948-c80a.zip
+
+Si ya fusionamos a main, tambien puede usar:
+https://github.com/jcmencop2021/validarips/archive/refs/heads/main.zip
+
+Despues de descargar:
+1. Clic derecho en el ZIP > Extraer todo
+2. Entre a la carpeta: validarips-....\MODULO_RIPS_948
+3. Ejecute:  python app.py
+   O use ModuloRIPS948.exe si lo tiene en dist\
+
+OPCION 2 - DESDE GITHUB (rama correcta)
+---------------------------------------
+1. Abra: https://github.com/jcmencop2021/validarips
+2. Arriba a la izquierda, clic en el nombre de rama (dice "main" o similar)
+3. Elija la rama: cursor/modulo-rips-948-c80a
+4. Boton verde "Code" / "Codigo" > "Download ZIP"
+5. Extraiga y entre a MODULO_RIPS_948
+
+OPCION 3 - EJECUTABLE .EXE (requiere cuenta GitHub)
+-------------------------------------------------
+1. Inicie sesion en github.com
+2. https://github.com/jcmencop2021/validarips/actions/workflows/build-windows-exe.yml
+3. Clic en la fila verde mas reciente (Build Windows EXE)
+4. Baje en la pagina hasta "Artifacts"
+5. Clic en "ModuloRIPS948-Windows" para descargar
+   (Si no ve Artifacts: debe estar logueado; los artifacts expiran a los 90 dias)
+
+OPCION 4 - GIT en su PC
+-----------------------
+git clone -b cursor/modulo-rips-948-c80a https://github.com/jcmencop2021/validarips.git
+cd validarips\MODULO_RIPS_948
+python -m pip install -r requirements.txt
+python app.py
+
+EJECUTAR CON PYTHON (Windows)
+-----------------------------
+cd D:\MODULORIPS\MODULO_RIPS_948
+python -m pip install -r requirements.txt
+python scripts\init_template.py
+python app.py
+
+Verifique cartel naranja: VERSION 1.2.1 o superior.
+
+Ayuda: jcmencop2021 en GitHub / issues del repositorio validarips
