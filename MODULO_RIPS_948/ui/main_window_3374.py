@@ -30,7 +30,8 @@ class MainWindow3374(MainWindow948):
             "Muestra los archivos encontrados antes de confirmar."
         )
         self.btn_validar.setToolTip(
-            "Valida estructura Res. 3374, usuarios en US y totales AF vs archivos de servicios."
+            "Valida el manifiesto CT (archivos del paquete y cantidad de registros), "
+            "usuarios en US, totales AF vs servicios, etc."
         )
         self.btn_errores = self._add_toolbar_button(
             "Solo errores",
