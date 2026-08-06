@@ -7,6 +7,15 @@ PROBLEMA FRECUENTE
 Si descarga desde la rama "main" antigua, solo llega un README.
 El programa completo esta en la rama con el modulo.
 
+OPCION 0 - RELEASE OFICIAL (RECOMENDADO - EXE + ZIP)
+----------------------------------------------------
+https://github.com/jcmencop2021/validarips/releases/tag/v1.2.2
+
+Descargue uno de estos archivos:
+  - MODULORIPS_v1.2.2_Windows_completo.zip  (exe + fuente + leeme)
+  - ModuloRIPS948.exe                         (solo programa Windows)
+  - MODULO_RIPS_948_v1.2.2.zip                (solo carpeta para Python)
+
 OPCION 1 - ENLACE DIRECTO AL ZIP (copie y pegue en el navegador)
 ----------------------------------------------------------------
 https://github.com/jcmencop2021/validarips/archive/refs/heads/cursor/modulo-rips-948-c80a.zip
