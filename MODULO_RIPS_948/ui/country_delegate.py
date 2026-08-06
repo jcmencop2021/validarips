@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QStringListModel
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QCompleter, QStyledItemDelegate
 
 from core.paises import country_choices, match_country_display

@@ -16,6 +16,7 @@ class MainWindow3374(MainWindow948):
     """Relación y validación RIPS archivos planos (Res. 3374)."""
 
     def __init__(self) -> None:
+        self._grid_profile = "3374"
         super().__init__()
         self.setWindowTitle(
             self.windowTitle().replace("948", "3374").replace("Relación", "Relación TXT")
@@ -38,8 +39,6 @@ class MainWindow3374(MainWindow948):
         )
         self.btn_errores.clicked.connect(self.on_solo_errores)
         self.lbl_resultado.setText("Resultado RIPS 3374: —")
-        self._grid_profile = "3374"
-        attach_column_width_persistence(self.table, self._grid_profile)
 
     def _enrich_records_from_factura_index(self) -> None:
         for rec in self.records:
