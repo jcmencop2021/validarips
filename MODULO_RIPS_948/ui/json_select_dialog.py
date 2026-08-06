@@ -23,16 +23,33 @@ from core.loader import load_json_file
 
 
 class RipsFolderDialog(QDialog):
-    """Elige carpeta y muestra los JSON disponibles antes de confirmar."""
+    """Elige carpeta y muestra los archivos buscados antes de confirmar."""
 
-    def __init__(self, start_folder: str = "", parent=None) -> None:
+    def __init__(
+        self,
+        start_folder: str = "",
+        parent=None,
+        *,
+        glob_pattern: str = "*.json",
+        file_kind_label: str = "JSON RIPS",
+        validate_rips: bool = True,
+    ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Carpeta de trabajo — archivos RIPS JSON")
+        self._glob_pattern = glob_pattern
+        self._file_kind_label = file_kind_label
+        self._validate_rips = validate_rips
+        self.setWindowTitle(f"Carpeta de trabajo — archivos {file_kind_label}")
         self.resize(640, 480)
         self._folder = Path(start_folder) if start_folder else Path.home()
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Seleccione la carpeta y marque los archivos .json a cargar:"))
+        layout.addWidget(
+            QLabel(
+                f"<b>Paso 1:</b> Elija la carpeta. <b>Paso 2:</b> Revise los archivos "
+                f"<i>{file_kind_label}</i> listados abajo. <b>Paso 3:</b> Pulse Aceptar solo si "
+                "es la carpeta correcta; si no, use Examinar carpeta otra vez."
+            )
+        )
 
         folder_row = QHBoxLayout()
         self.folder_edit = QLineEdit(str(self._folder))
@@ -81,7 +98,9 @@ class RipsFolderDialog(QDialog):
 
     def _browse_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(
-            self, "Seleccionar carpeta con archivos JSON", self.folder_edit.text()
+            self,
+            f"Seleccionar carpeta — se listarán los {self._file_kind_label} encontrados",
+            self.folder_edit.text(),
         )
         if path:
             self.folder_edit.setText(path)
@@ -100,15 +119,17 @@ class RipsFolderDialog(QDialog):
             self.lbl_info.setText("La ruta no es una carpeta válida.")
             return
 
-        for path in sorted(folder.glob("*.json")):
+        for path in sorted(folder.glob(self._glob_pattern)):
             count += 1
-            data, err = load_json_file(path)
-            is_rips = not err and isinstance(data, dict) and is_rips_payload(data)
+            is_rips = True
+            label = path.name
+            if self._validate_rips:
+                data, err = load_json_file(path)
+                is_rips = not err and isinstance(data, dict) and is_rips_payload(data)
+                if not is_rips:
+                    label = f"{label}  (no parece RIPS JSON)"
             if is_rips:
                 rips_count += 1
-            label = path.name
-            if not is_rips:
-                label = f"{label}  (no parece RIPS)"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, str(path.resolve()))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -118,10 +139,12 @@ class RipsFolderDialog(QDialog):
             self.list_widget.addItem(item)
 
         if count == 0:
-            self.lbl_info.setText("No hay archivos .json en esta carpeta.")
+            self.lbl_info.setText(
+                f"No hay archivos {self._glob_pattern} en esta carpeta. Busque otra carpeta."
+            )
         else:
             self.lbl_info.setText(
-                f"Archivos JSON: {count} | Con estructura RIPS: {rips_count}"
+                f"Archivos {self._file_kind_label}: {count} | Válidos para carga: {rips_count}"
             )
 
     def _check_all(self) -> None:

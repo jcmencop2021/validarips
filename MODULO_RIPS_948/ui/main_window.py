@@ -75,7 +75,7 @@ ADMIN_FIELD_WIDTH: dict[str, int] = {
 }
 
 
-class MainWindow(QMainWindow):
+class MainWindow948(QMainWindow):
     COL_EXPORT = 0
 
     def __init__(self) -> None:
@@ -639,11 +639,20 @@ class MainWindow(QMainWindow):
         )
 
 
-def run() -> None:
-    app = QApplication(sys.argv)
-    window = MainWindow()
+def run_948() -> None:
+    app = QApplication.instance() or QApplication(sys.argv)
+    window = MainWindow948()
     window.show()
-    sys.exit(app.exec())
+    if QApplication.instance() is None:
+        sys.exit(app.exec())
+
+
+# Compatibilidad
+MainWindow = MainWindow948
+
+
+def run() -> None:
+    run_948()
 
 
 if __name__ == "__main__":

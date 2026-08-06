@@ -1,0 +1,175 @@
+from __future__ import annotations
+
+from PySide6.QtWidgets import QMessageBox
+
+from core.date_fmt import format_date_display
+from core.rips_3374.txt_parser import load_from_txt_paths, load_from_zip
+from core.rips_3374.validator import (
+    build_records_from_package,
+    validate_package,
+    validation_summary_3374,
+)
+from core.validator import Severity
+from ui.main_window import MainWindow948
+from ui.rips_3374_load_dialog import Rips3374LoadDialog
+
+
+class MainWindow3374(MainWindow948):
+    """Relación y validación RIPS archivos planos (Res. 3374)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle(
+            self.windowTitle().replace("948", "3374").replace("Relación", "Relación TXT")
+        )
+        self.package = None
+        self.btn_carpeta.setVisible(False)
+        self.btn_buscar.setText("Buscar archivos RIPS (TXT / ZIP)")
+        self.btn_buscar.setToolTip(
+            "Abre el selector de ZIP o carpeta con archivos .txt (CT, AF, US, AC, AP, …). "
+            "Muestra los archivos encontrados antes de confirmar."
+        )
+        self.btn_validar.setToolTip(
+            "Valida estructura Res. 3374, usuarios en US y totales AF vs archivos de servicios."
+        )
+        self.btn_errores = self._add_toolbar_button(
+            "Solo errores",
+            "Muestra únicamente los errores de la última validación.",
+            after=self.btn_ver_informe,
+        )
+        self.btn_errores.clicked.connect(self.on_solo_errores)
+        self.lbl_resultado.setText("Resultado RIPS 3374: —")
+
+    def _enrich_records_from_factura_index(self) -> None:
+        for rec in self.records:
+            nro = str(rec.values.get("NroFac") or "").strip()
+            if not nro:
+                continue
+            meta = self.factura_index.get(nro)
+            if not meta:
+                continue
+            if meta.fecha_factura and not rec.values.get("Fecha factura"):
+                rec.values["Fecha factura"] = format_date_display(meta.fecha_factura)
+            if meta.nombre_ips and not rec.values.get("NombreIps"):
+                rec.values["NombreIps"] = meta.nombre_ips
+            if meta.nombre_paciente and not rec.values.get("Nombre"):
+                rec.values["Nombre"] = meta.nombre_paciente
+
+    def _add_toolbar_button(self, text: str, tooltip: str, after) -> object:
+        row = after.parentWidget()
+        lay = row.layout()
+        btn = type(after)(text)
+        btn.setToolTip(tooltip)
+        idx = lay.indexOf(after)
+        lay.insertWidget(idx + 1, btn)
+        return btn
+
+    def on_descargar_informe(self) -> None:
+        if not self.validation_report:
+            self.on_validar()
+        if not self.validation_report:
+            return
+        from pathlib import Path
+
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Guardar informe de validación RIPS 3374",
+            "informe_validacion_rips_3374.txt",
+            "Texto (*.txt)",
+        )
+        if path:
+            Path(path).write_text(
+                validation_summary_3374(self.validation_report), encoding="utf-8"
+            )
+            QMessageBox.information(self, "Informe", f"Informe guardado en:\n{path}")
+
+    def _open_rips_picker(self) -> list[str]:
+        return []
+
+    def on_buscar_archivos(self) -> None:
+        self._open_3374_loader()
+
+    def on_buscar_carpeta(self) -> None:
+        self._open_3374_loader()
+
+    def _open_3374_loader(self) -> None:
+        dialog = Rips3374LoadDialog(self._last_folder, self)
+        if dialog.exec() != Rips3374LoadDialog.DialogCode.Accepted:
+            return
+        if dialog.is_zip_mode():
+            zp = dialog.zip_path()
+            if not zp:
+                return
+            self._last_folder = str(zp.parent)
+            self.package = load_from_zip(zp)
+        else:
+            folder = dialog.folder_path()
+            self._last_folder = str(folder)
+            paths = dialog.selected_txt_paths()
+            if not paths:
+                from core.rips_3374.txt_parser import list_matching_txt_in_folder
+
+                paths = list_matching_txt_in_folder(folder)
+            self.package = load_from_txt_paths(paths)
+            self.factura_index.scan_directories({folder})
+        self.records = build_records_from_package(self.package)
+        self._enrich_records_from_factura_index()
+        self.documents = []
+        self.validation_report = None
+        self.lbl_resultado.setText("Resultado RIPS 3374: — (pendiente validar)")
+        self._refresh_table()
+        self._update_stats()
+        self.on_validar()
+        QMessageBox.information(
+            self,
+            "Carga RIPS 3374",
+            f"Archivos cargados: {len(self.package.rows)}\n"
+            f"Registros en grilla: {len(self.records)}\n"
+            "Se ejecutó la validación automáticamente.",
+        )
+
+    def on_validar(self) -> None:
+        if not self.package or not self.package.rows:
+            QMessageBox.warning(
+                self,
+                "Sin datos",
+                "Cargue un ZIP o carpeta con archivos .txt RIPS (Res. 3374).",
+            )
+            return
+        self.validation_report = validate_package(self.package)
+        text = validation_summary_3374(self.validation_report)
+        self.txt_validacion.setPlainText(text)
+        status = self.validation_report.status_label
+        self.lbl_resultado.setText(f"Resultado RIPS 3374: {status}")
+        color = {"OK": "#1b7f3a", "ADVERTENCIA": "#b8860b", "ERROR": "#b00020"}.get(
+            status, "#333"
+        )
+        self.lbl_resultado.setStyleSheet(f"font-weight: bold; color: {color};")
+
+    def on_solo_errores(self) -> None:
+        if not self.validation_report:
+            self.on_validar()
+        if not self.validation_report:
+            return
+        errs = [
+            m.line()
+            for m in self.validation_report.messages
+            if m.severity == Severity.ERROR
+        ]
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("Errores RIPS 3374")
+        dlg.setText(f"Errores encontrados: {len(errs)}")
+        dlg.setDetailedText("\n".join(errs) if errs else "No hay errores.")
+        dlg.exec()
+
+    def on_ver_informe(self) -> None:
+        if not self.validation_report:
+            self.on_validar()
+        if self.validation_report:
+            dlg = QMessageBox(self)
+            dlg.setWindowTitle("Resultado validación RIPS 3374")
+            dlg.setText(self.validation_report.status_label)
+            dlg.setDetailedText(validation_summary_3374(self.validation_report))
+            dlg.exec()
