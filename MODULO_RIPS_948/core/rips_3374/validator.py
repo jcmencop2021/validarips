@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from core.rips_3374.constants import (
     AF_IDX_NUM_FACTURA,
@@ -17,6 +18,12 @@ from core.rips_3374.constants import (
     US_IDX_SEGUNDO_APELLIDO,
     US_IDX_SEGUNDO_NOMBRE,
     US_IDX_TIPO_DOC,
+)
+from core.rips_3374.ct_manifest import (
+    CT_RECOMMENDED_ORDER,
+    CtEntry,
+    package_file_for_ct_code,
+    parse_ct_entries,
 )
 from core.rips_3374.txt_parser import Rips3374Package, remision_from_filename
 from core.validator import Severity, ValidationMessage, ValidationReport
@@ -95,6 +102,99 @@ def build_records_from_package(pkg: Rips3374Package) -> list[RelationRecord]:
     return records
 
 
+def _validate_ct_manifest(pkg: Rips3374Package, report: ValidationReport) -> list[CtEntry]:
+    """Valida CT: relación de archivos del paquete y conteo de registros."""
+    ct_rows = pkg.rows.get("CT", [])
+    if not ct_rows:
+        report.messages.append(
+            ValidationMessage(
+                Severity.ERROR,
+                "CT",
+                "Falta archivo CT (control). Todo envío RIPS debe incluir el manifiesto CT.",
+            )
+        )
+        return []
+
+    entries, parse_errors = parse_ct_entries(ct_rows)
+    for err in parse_errors:
+        report.messages.append(ValidationMessage(Severity.ERROR, "CT", err))
+
+    if not entries and parse_errors:
+        return []
+
+    listed_codes: set[str] = set()
+    order_types: list[str] = []
+
+    for entry in entries:
+        listed_codes.add(entry.codigo_archivo)
+        order_types.append(entry.codigo_archivo[:2])
+
+        ftype, fname = package_file_for_ct_code(pkg, entry.codigo_archivo)
+        if not ftype or not fname:
+            report.messages.append(
+                ValidationMessage(
+                    Severity.ERROR,
+                    "CT",
+                    f"Línea {entry.line_no}: archivo {entry.codigo_archivo} declarado en CT "
+                    "no está en el paquete cargado.",
+                )
+            )
+            continue
+
+        actual = len(pkg.rows.get(ftype, []))
+        if actual != entry.total_registros:
+            report.messages.append(
+                ValidationMessage(
+                    Severity.ERROR,
+                    "CT",
+                    f"Archivo {fname} ({entry.codigo_archivo}): CT indica {entry.total_registros} "
+                    f"registros, el archivo tiene {actual}.",
+                )
+            )
+
+    # Archivos cargados que no están en el CT
+    for ftype, path in pkg.files.items():
+        if ftype == "CT":
+            continue
+        name = path.name if hasattr(path, "name") else str(path)
+        stem = Path(name).stem.upper()
+        matched = any(
+            stem == code or stem.startswith(code) for code in listed_codes
+        )
+        if not matched:
+            report.messages.append(
+                ValidationMessage(
+                    Severity.ERROR,
+                    "CT",
+                    f"El archivo {name} está en el paquete pero no aparece en el CT.",
+                )
+            )
+
+    # Orden en CT (advertencia)
+    recommended = [t for t in CT_RECOMMENDED_ORDER if t in order_types]
+    actual_order = [t for t in order_types if t in CT_RECOMMENDED_ORDER]
+    if actual_order != recommended:
+        report.messages.append(
+            ValidationMessage(
+                Severity.ADVERTENCIA,
+                "CT",
+                "El orden de archivos en CT no coincide con el recomendado "
+                f"({', '.join(CT_RECOMMENDED_ORDER)}).",
+            )
+        )
+
+    if entries and not any(m.source == "CT" and m.severity == Severity.ERROR for m in report.messages):
+        report.messages.append(
+            ValidationMessage(
+                Severity.OK,
+                "CT",
+                f"Manifiesto CT: {len(entries)} archivo(s) declarados; conteos verificados.",
+            )
+        )
+
+    return entries
+
+
 def validate_package(pkg: Rips3374Package) -> ValidationReport:
     report = ValidationReport()
     if pkg.load_errors:
@@ -102,6 +202,15 @@ def validate_package(pkg: Rips3374Package) -> ValidationReport:
             report.messages.append(
                 ValidationMessage(Severity.ERROR, "Carga", err)
             )
+
+    _validate_ct_manifest(pkg, report)
+
+    # Sin CT válido no continuar validaciones de detalle (lineamiento IPS)
+    ct_ok = "CT" in pkg.rows and not any(
+        m.source == "CT" and m.severity == Severity.ERROR for m in report.messages
+    )
+    if not ct_ok:
+        return report
 
     remissions: set[str] = set()
     for name in pkg.files:
