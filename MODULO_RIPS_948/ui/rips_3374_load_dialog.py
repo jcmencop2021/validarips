@@ -20,8 +20,10 @@ from PySide6.QtWidgets import (
 )
 
 from core.rips_3374.txt_parser import (
+    display_path_under_root,
     file_type_from_name,
     list_txt_in_folder_for_preview,
+    normalize_folder_path,
 )
 
 
@@ -99,8 +101,12 @@ class Rips3374LoadDialog(QDialog):
         self.btn_zip.setEnabled(self._mode_zip)
         self.folder_edit.setEnabled(not self._mode_zip)
         self.btn_folder.setEnabled(not self._mode_zip)
-        if self._mode_zip and self._zip_path:
-            self._show_zip_preview()
+        if self._mode_zip:
+            if self._zip_path:
+                self._show_zip_preview()
+            else:
+                self.list_widget.clear()
+                self.lbl_info.setText("Seleccione un ZIP o active «Carpeta con archivos .txt».")
         else:
             self._reload_folder_list()
 
@@ -140,7 +146,9 @@ class Rips3374LoadDialog(QDialog):
                     if info.is_dir():
                         continue
                     name = Path(info.filename).name
-                    if not name.lower().endswith(".txt"):
+                    if not name.lower().endswith(".txt") and not (
+                        file_type_from_name(name) and Path(name).suffix == ""
+                    ):
                         continue
                     ftype = file_type_from_name(name)
                     label = f"{name}  [{ftype or '???'}]"
@@ -158,17 +166,23 @@ class Rips3374LoadDialog(QDialog):
         )
 
     def _reload_folder_list(self) -> None:
-        self.list_widget.clear()
-        folder = Path(self.folder_edit.text().strip() or ".")
-        self._folder = folder
-        if not folder.is_dir():
-            self.lbl_info.setText("Ruta de carpeta no válida.")
+        if self._mode_zip:
             return
+        self.list_widget.clear()
+        folder = normalize_folder_path(self.folder_edit.text())
+        if folder is None or not folder.is_dir():
+            self.lbl_info.setText(
+                f"No se puede abrir la carpeta:\n{self.folder_edit.text().strip()}"
+            )
+            return
+        self._folder = folder
+        self.folder_edit.setText(str(folder))
         paths = list_txt_in_folder_for_preview(folder)
         recognized = 0
         for path in paths:
             ftype = file_type_from_name(path.name)
-            label = f"{path.name}  [{ftype or '???'}]"
+            rel = display_path_under_root(folder, path)
+            label = f"{rel}  [{ftype or '???'}]"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, str(path.resolve()))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -181,21 +195,21 @@ class Rips3374LoadDialog(QDialog):
             self.list_widget.addItem(item)
         if not paths:
             self.lbl_info.setText(
-                "No hay archivos .txt en esta carpeta (ni en subcarpetas inmediatas). "
-                "Revise la ruta o use ZIP."
+                f"No se encontraron archivos CT/AF/US… (.txt o sin extensión) "
+                f"bajo:\n{folder}\n"
+                "Compruebe que eligió la carpeta de la remisión (ej. …\\9959) "
+                "o un nivel superior que contenga esas carpetas."
             )
         elif recognized == 0:
             self.lbl_info.setText(
-                f"Carpeta: {folder} | {len(paths)} archivo(s) .txt sin prefijo/sufijo RIPS "
-                "(ej. CT9959.txt o 9959CT.txt). Revise nombres."
+                f"{len(paths)} archivo(s) .txt sin nombre RIPS (deben empezar por CT, AF, US, …)."
             )
         else:
             types = sorted(
                 {file_type_from_name(p.name) for p in paths if file_type_from_name(p.name)}
             )
             self.lbl_info.setText(
-                f"Carpeta: {folder} | Archivos RIPS: {recognized}/{len(paths)} | "
-                f"Tipos: {', '.join(types)}"
+                f"Raíz: {folder} | Archivos RIPS: {recognized} | Tipos: {', '.join(types)}"
             )
 
     def _on_accept(self) -> None:
@@ -227,7 +241,8 @@ class Rips3374LoadDialog(QDialog):
         return self._zip_path
 
     def folder_path(self) -> Path:
-        return Path(self.folder_edit.text().strip())
+        p = normalize_folder_path(self.folder_edit.text())
+        return p if p is not None else Path(self.folder_edit.text().strip())
 
     def selected_txt_paths(self) -> list[Path]:
         paths: list[Path] = []
