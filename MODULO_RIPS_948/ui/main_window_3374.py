@@ -2,16 +2,13 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QMessageBox
 
-from core.date_fmt import format_date_display
+from core.rips_3374.records import build_records_from_package
 from core.rips_3374.txt_parser import load_from_txt_paths, load_from_zip
-from core.rips_3374.validator import (
-    build_records_from_package,
-    validate_package,
-    validation_summary_3374,
-)
+from core.rips_3374.validator import validate_package, validation_summary_3374
 from core.validator import Severity
 from ui.main_window import MainWindow948
 from ui.rips_3374_load_dialog import Rips3374LoadDialog
+from ui.validation_report_dialog import ValidationReportDialog
 
 
 class MainWindow3374(MainWindow948):
@@ -159,18 +156,24 @@ class MainWindow3374(MainWindow948):
             for m in self.validation_report.messages
             if m.severity == Severity.ERROR
         ]
-        dlg = QMessageBox(self)
-        dlg.setWindowTitle("Errores RIPS 3374")
-        dlg.setText(f"Errores encontrados: {len(errs)}")
-        dlg.setDetailedText("\n".join(errs) if errs else "No hay errores.")
+        body = "\n".join(errs) if errs else "No hay errores en la última validación."
+        dlg = ValidationReportDialog(
+            "Errores RIPS 3374",
+            f"Errores encontrados: {len(errs)}",
+            body,
+            self,
+        )
         dlg.exec()
 
     def on_ver_informe(self) -> None:
         if not self.validation_report:
             self.on_validar()
         if self.validation_report:
-            dlg = QMessageBox(self)
-            dlg.setWindowTitle("Resultado validación RIPS 3374")
-            dlg.setText(self.validation_report.status_label)
-            dlg.setDetailedText(validation_summary_3374(self.validation_report))
+            body = validation_summary_3374(self.validation_report)
+            dlg = ValidationReportDialog(
+                "Resultado validación RIPS 3374",
+                f"Estado: {self.validation_report.status_label}",
+                body,
+                self,
+            )
             dlg.exec()

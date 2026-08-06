@@ -25,9 +25,9 @@ from core.rips_3374.ct_manifest import (
     package_file_for_ct_code,
     parse_ct_entries,
 )
+from core.rips_3374.records import build_records_from_package
 from core.rips_3374.txt_parser import Rips3374Package, remision_from_filename
 from core.validator import Severity, ValidationMessage, ValidationReport
-from models.relation_record import RELATION_COLUMNS, RelationRecord
 
 
 def _parse_money(value: str) -> Decimal | None:
@@ -50,56 +50,18 @@ def _field(row: list[str], idx: int) -> str:
     return row[idx].strip()
 
 
-def build_records_from_package(pkg: Rips3374Package) -> list[RelationRecord]:
-    records: list[RelationRecord] = []
-    us_rows = pkg.rows.get("US", [])
-    af_rows = pkg.rows.get("AF", [])
-    af_by_factura: dict[str, list[str]] = {}
-    for row in af_rows:
-        fac = _field(row, AF_IDX_NUM_FACTURA)
-        if fac:
-            af_by_factura[fac] = row
-
-    default_af = af_rows[0] if len(af_rows) == 1 else None
-    fechas: dict[str, str] = {}
-    for row in af_rows:
-        fac = _field(row, AF_IDX_NUM_FACTURA)
-        if fac and len(row) > 6:
-            fechas[fac] = _field(row, 6)
-
-    for row in us_rows:
-        tipo = _field(row, US_IDX_TIPO_DOC)
-        num = _field(row, US_IDX_NUM_DOC)
-        if not tipo or not num:
-            continue
-        nombre = " ".join(
-            p
-            for p in (
-                _field(row, US_IDX_PRIMER_NOMBRE),
-                _field(row, US_IDX_SEGUNDO_NOMBRE),
-                _field(row, US_IDX_PRIMER_APELLIDO),
-                _field(row, US_IDX_SEGUNDO_APELLIDO),
-            )
-            if p
-        )
-        rec = RelationRecord(source_file=pkg.source_label)
-        rec.values["TipoIde"] = tipo
-        rec.values["NumIde"] = num
-        rec.values["Nombre"] = nombre
-        if default_af:
-            rec.values["NroFac"] = _field(default_af, AF_IDX_NUM_FACTURA)
-            rec.values["Fecha factura"] = _field(default_af, 6)
-            rec.values["CodIps"] = _field(default_af, 0)[:12]
-        records.append(rec)
-
-    if not records and af_rows:
-        for row in af_rows:
-            rec = RelationRecord(source_file=pkg.source_label)
-            rec.values["NroFac"] = _field(row, AF_IDX_NUM_FACTURA)
-            rec.values["Fecha factura"] = _field(row, 6)
-            rec.values["CodIps"] = _field(row, 0)[:12]
-            records.append(rec)
-    return records
+def _service_valor_for_validation(row: list[str], stype: str) -> Decimal | None:
+    idx = SVC_VALOR_IDX.get(stype, 14)
+    val = _parse_money(_field(row, idx))
+    if val > 0:
+        return val
+    for part in reversed(row):
+        v = _parse_money(part)
+        if v > 0:
+            return v
+    if _field(row, idx) == "":
+        return Decimal("0")
+    return None
 
 
 def _validate_ct_manifest(pkg: Rips3374Package, report: ValidationReport) -> list[CtEntry]:
@@ -266,7 +228,7 @@ def validate_package(pkg: Rips3374Package) -> ValidationReport:
                         f"Línea {i}: usuario {tipo}-{num} no está en archivo US.",
                     )
                 )
-            val = _parse_money(_field(row, vidx))
+            val = _service_valor_for_validation(row, stype)
             if val is None:
                 report.messages.append(
                     ValidationMessage(
@@ -356,8 +318,6 @@ def validation_summary_3374(report: ValidationReport) -> str:
         "",
     ]
     for msg in report.messages:
-        if msg.severity == Severity.OK:
-            continue
         lines.append(msg.line())
     if errors == 0 and warnings == 0:
         lines.append("[OK] Sin errores ni advertencias.")
