@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from core.rips_3374.txt_parser import (
     file_type_from_name,
-    list_matching_txt_in_folder,
+    list_txt_in_folder_for_preview,
 )
 
 
@@ -164,22 +164,38 @@ class Rips3374LoadDialog(QDialog):
         if not folder.is_dir():
             self.lbl_info.setText("Ruta de carpeta no válida.")
             return
-        paths = list_matching_txt_in_folder(folder)
+        paths = list_txt_in_folder_for_preview(folder)
+        recognized = 0
         for path in paths:
-            ftype = file_type_from_name(path.name) or "??"
-            item = QListWidgetItem(f"{path.name}  [{ftype}]")
+            ftype = file_type_from_name(path.name)
+            label = f"{path.name}  [{ftype or '???'}]"
+            item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, str(path.resolve()))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)
+            if ftype:
+                item.setCheckState(Qt.CheckState.Checked)
+                recognized += 1
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+                item.setForeground(QColor("#b8860b"))
             self.list_widget.addItem(item)
         if not paths:
             self.lbl_info.setText(
-                "No hay archivos .txt RIPS en esta carpeta. Elija otra carpeta."
+                "No hay archivos .txt en esta carpeta (ni en subcarpetas inmediatas). "
+                "Revise la ruta o use ZIP."
+            )
+        elif recognized == 0:
+            self.lbl_info.setText(
+                f"Carpeta: {folder} | {len(paths)} archivo(s) .txt sin prefijo/sufijo RIPS "
+                "(ej. CT9959.txt o 9959CT.txt). Revise nombres."
             )
         else:
-            types = sorted({file_type_from_name(p.name) for p in paths if file_type_from_name(p.name)})
+            types = sorted(
+                {file_type_from_name(p.name) for p in paths if file_type_from_name(p.name)}
+            )
             self.lbl_info.setText(
-                f"Carpeta: {folder} | Archivos: {len(paths)} | Tipos: {', '.join(types)}"
+                f"Carpeta: {folder} | Archivos RIPS: {recognized}/{len(paths)} | "
+                f"Tipos: {', '.join(types)}"
             )
 
     def _on_accept(self) -> None:
@@ -193,6 +209,14 @@ class Rips3374LoadDialog(QDialog):
         else:
             if self.list_widget.count() == 0:
                 self.lbl_info.setText("No hay archivos para cargar. Cambie de carpeta.")
+                return
+            if not any(
+                self.list_widget.item(i).checkState() == Qt.CheckState.Checked
+                for i in range(self.list_widget.count())
+            ):
+                self.lbl_info.setText(
+                    "Marque al menos un archivo .txt RIPS reconocido (CT, AF, US, …)."
+                )
                 return
         self.accept()
 

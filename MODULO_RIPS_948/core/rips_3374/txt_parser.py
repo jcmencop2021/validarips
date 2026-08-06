@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,13 +13,40 @@ def split_rips_line(line: str) -> list[str]:
 
 
 def file_type_from_name(name: str) -> str | None:
-    base = Path(name).name.upper()
-    if len(base) < 2:
+    """Tipo RIPS (CT, AF, US, …) al inicio o al final del nombre, sin extensión."""
+    stem = Path(name).stem.upper()
+    if len(stem) < 2:
         return None
-    prefix = base[:2]
+    prefix = stem[:2]
     if prefix in RIPS_TXT_TYPES:
         return prefix
+    suffix = stem[-2:]
+    if suffix in RIPS_TXT_TYPES:
+        return suffix
     return None
+
+
+def _txt_files_in_folder(folder: Path) -> list[Path]:
+    """Todos los .txt en la carpeta (extensión sin distinguir mayúsculas)."""
+    if not folder.is_dir():
+        return []
+    out: list[Path] = []
+    seen: set[str] = set()
+    try:
+        entries = list(folder.iterdir())
+    except OSError:
+        return []
+    for path in entries:
+        if not path.is_file():
+            continue
+        if path.suffix.lower() != ".txt":
+            continue
+        key = path.name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return sorted(out, key=lambda p: p.name.lower())
 
 
 def parse_txt_file(path: Path) -> tuple[str | None, list[list[str]], str | None]:
@@ -102,18 +128,43 @@ def load_from_zip(zip_path: Path) -> Rips3374Package:
     return pkg
 
 
+def list_txt_in_folder_for_preview(folder: Path) -> list[Path]:
+    """Todos los .txt visibles en el diálogo (incluye nombres no reconocidos como RIPS)."""
+    paths = _txt_files_in_folder(folder)
+    if not paths:
+        try:
+            for child in sorted(folder.iterdir()):
+                if child.is_dir():
+                    paths.extend(_txt_files_in_folder(child))
+        except OSError:
+            pass
+        paths = sorted({p.resolve(): p for p in paths}.values(), key=lambda p: p.name.lower())
+    return paths
+
+
 def list_matching_txt_in_folder(folder: Path) -> list[Path]:
-    if not folder.is_dir():
-        return []
-    out: list[Path] = []
-    for path in sorted(folder.glob("*.txt")):
-        if file_type_from_name(path.name):
-            out.append(path)
-    return out
+    """Archivos .txt RIPS en la carpeta (y un nivel en subcarpetas si la raíz está vacía)."""
+    paths = _txt_files_in_folder(folder)
+    if not paths:
+        try:
+            for child in sorted(folder.iterdir()):
+                if child.is_dir():
+                    paths.extend(_txt_files_in_folder(child))
+        except OSError:
+            pass
+        paths = sorted({p.resolve(): p for p in paths}.values(), key=lambda p: p.name.lower())
+    return [p for p in paths if file_type_from_name(p.name)]
 
 
 def remision_from_filename(name: str) -> str | None:
-    m = re.match(r"^[A-Z]{2}(.+)\.TXT$", name.upper())
-    if not m:
+    stem = Path(name).stem.upper()
+    ftype = file_type_from_name(name)
+    if not ftype:
         return None
-    return m.group(1)
+    if stem.startswith(ftype):
+        rem = stem[2:].strip("_-")
+        return rem or None
+    if stem.endswith(ftype):
+        rem = stem[: -len(ftype)].strip("_-")
+        return rem or None
+    return None
