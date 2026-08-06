@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -33,11 +34,13 @@ from core.loader import (
     load_json_file,
     reload_records_with_facturas,
 )
+from core.grid_prefs import attach_column_width_persistence
 from core.prestadores import PrestadoresCatalog, load_prestadores_catalog
 from core.paths import get_module_root, template_path
 from core.version import BUILD_ID, get_version
 from core.validator import ValidationReport, validate_all
 from models.relation_record import ADMIN_FIELDS, RELATION_COLUMNS, RelationRecord
+from ui.country_delegate import CountryComboDelegate
 from ui.date_delegate import GRID_DATE_COLUMNS, DateLineDelegate
 from ui.factura_select_dialog import FacturaSelectDialog
 from ui.json_select_dialog import RipsFolderDialog
@@ -93,6 +96,7 @@ class MainWindow948(QMainWindow):
         self.documents: list[tuple[str, dict, list[RelationRecord]]] = []
         self.validation_report: ValidationReport | None = None
         self.loaded_files: list[Path] = []
+        self._grid_profile = "948"
 
         self._build_ui()
 
@@ -257,6 +261,12 @@ class MainWindow948(QMainWindow):
             if col_name in RELATION_COLUMNS:
                 col_idx = 1 + RELATION_COLUMNS.index(col_name)
                 self.table.setItemDelegateForColumn(col_idx, self._date_delegate)
+        if "NACION" in RELATION_COLUMNS:
+            nacion_col = 1 + RELATION_COLUMNS.index("NACION")
+            self.table.setItemDelegateForColumn(
+                nacion_col, CountryComboDelegate(self.table)
+            )
+        attach_column_width_persistence(self.table, self._grid_profile)
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(self.table)
 
@@ -270,7 +280,24 @@ class MainWindow948(QMainWindow):
         splitter.addWidget(result_box)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
+        self._main_splitter = splitter
         layout.addWidget(splitter, stretch=1)
+
+    def _show_validation_panel(self, body: str, status: str, title_prefix: str) -> None:
+        stamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        text = f"Última validación: {stamp}\nEstado: {status}\n{'—' * 40}\n{body}"
+        self.txt_validacion.setPlainText(text)
+        cursor = self.txt_validacion.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        self.txt_validacion.setTextCursor(cursor)
+        self.lbl_resultado.setText(f"{title_prefix}: {status}")
+        color = {"OK": "#1b7f3a", "ADVERTENCIA": "#b8860b", "ERROR": "#b00020"}.get(
+            status, "#333"
+        )
+        self.lbl_resultado.setStyleSheet(f"font-weight: bold; color: {color};")
+        if hasattr(self, "_main_splitter"):
+            total = sum(self._main_splitter.sizes()) or 900
+            self._main_splitter.setSizes([int(total * 0.52), int(total * 0.48)])
 
     def _admin_values(self) -> dict[str, str]:
         values: dict[str, str] = {}
@@ -561,14 +588,21 @@ class MainWindow948(QMainWindow):
         if not self.documents:
             QMessageBox.warning(self, "Sin datos", "Cargue archivos RIPS JSON primero.")
             return
-        self.validation_report = validate_all(self.documents)
-        self.txt_validacion.setPlainText(self.validation_report.summary_text())
-        status = self.validation_report.status_label
-        self.lbl_resultado.setText(f"Resultado RIPS: {status}")
-        color = {"OK": "#1b7f3a", "ADVERTENCIA": "#b8860b", "ERROR": "#b00020"}.get(
-            status, "#333"
-        )
-        self.lbl_resultado.setStyleSheet(f"font-weight: bold; color: {color};")
+        self.btn_validar.setEnabled(False)
+        prev_label = self.btn_validar.text()
+        self.btn_validar.setText("Validando…")
+        self.txt_validacion.setPlainText("Validando archivos RIPS… por favor espere.")
+        QApplication.processEvents()
+        try:
+            self.validation_report = validate_all(self.documents)
+            self._show_validation_panel(
+                self.validation_report.summary_text(),
+                self.validation_report.status_label,
+                "Resultado RIPS",
+            )
+        finally:
+            self.btn_validar.setEnabled(True)
+            self.btn_validar.setText(prev_label)
 
     def on_ver_informe(self) -> None:
         if not self.validation_report:

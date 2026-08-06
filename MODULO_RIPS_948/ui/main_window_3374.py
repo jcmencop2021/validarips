@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from core.date_fmt import format_date_display
 from core.rips_3374.records import build_records_from_package
@@ -38,6 +38,8 @@ class MainWindow3374(MainWindow948):
         )
         self.btn_errores.clicked.connect(self.on_solo_errores)
         self.lbl_resultado.setText("Resultado RIPS 3374: —")
+        self._grid_profile = "3374"
+        attach_column_width_persistence(self.table, self._grid_profile)
 
     def _enrich_records_from_factura_index(self) -> None:
         for rec in self.records:
@@ -121,12 +123,9 @@ class MainWindow3374(MainWindow948):
         self._refresh_table()
         self._update_stats()
         self.on_validar()
-        QMessageBox.information(
-            self,
-            "Carga RIPS 3374",
-            f"Archivos cargados: {len(self.package.rows)}\n"
-            f"Registros en grilla: {len(self.records)}\n"
-            "Se ejecutó la validación automáticamente.",
+        self.lbl_facturas.setText(
+            self.lbl_facturas.text()
+            + f" | Tipos cargados: {len(self.package.rows)}"
         )
 
     def on_validar(self) -> None:
@@ -137,15 +136,26 @@ class MainWindow3374(MainWindow948):
                 "Cargue un ZIP o carpeta con archivos .txt RIPS (Res. 3374).",
             )
             return
-        self.validation_report = validate_package(self.package)
-        text = validation_summary_3374(self.validation_report)
-        self.txt_validacion.setPlainText(text)
-        status = self.validation_report.status_label
-        self.lbl_resultado.setText(f"Resultado RIPS 3374: {status}")
-        color = {"OK": "#1b7f3a", "ADVERTENCIA": "#b8860b", "ERROR": "#b00020"}.get(
-            status, "#333"
+        self.btn_validar.setEnabled(False)
+        prev = self.btn_validar.text()
+        self.btn_validar.setText("Validando…")
+        self.txt_validacion.setPlainText(
+            "Validando manifiesto CT y archivos RIPS 3374… por favor espere."
         )
-        self.lbl_resultado.setStyleSheet(f"font-weight: bold; color: {color};")
+        QApplication.processEvents()
+        try:
+            self.validation_report = validate_package(self.package)
+            body = validation_summary_3374(self.validation_report)
+            if not body.strip():
+                body = "Sin mensajes de validación (revise que el CT y los .txt estén cargados)."
+            self._show_validation_panel(
+                body,
+                self.validation_report.status_label,
+                "Resultado RIPS 3374",
+            )
+        finally:
+            self.btn_validar.setEnabled(True)
+            self.btn_validar.setText(prev)
 
     def on_solo_errores(self) -> None:
         if not self.validation_report:
