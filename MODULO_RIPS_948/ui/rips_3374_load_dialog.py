@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -24,7 +25,24 @@ from core.rips_3374.txt_parser import (
     file_type_from_name,
     list_txt_in_folder_for_preview,
     normalize_folder_path,
+    scan_folder_warning,
 )
+
+
+class _FolderScanThread(QThread):
+    done = Signal(list)
+    error = Signal(str)
+
+    def __init__(self, folder: Path) -> None:
+        super().__init__()
+        self._folder = folder
+
+    def run(self) -> None:
+        try:
+            paths = list_txt_in_folder_for_preview(self._folder)
+            self.done.emit([str(p.resolve()) for p in paths])
+        except Exception as exc:  # noqa: BLE001 — informar al usuario
+            self.error.emit(str(exc))
 
 
 class Rips3374LoadDialog(QDialog):
@@ -34,9 +52,11 @@ class Rips3374LoadDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Cargar RIPS Res. 3374 — TXT o ZIP")
         self.resize(700, 520)
-        self._folder = Path(start_folder) if start_folder else Path.home()
+        self._browse_start = start_folder.strip() or str(Path.home())
         self._zip_path: Path | None = None
         self._mode_zip = True
+        self._scan_thread: _FolderScanThread | None = None
+        self._scanned_folder: Path | None = None
 
         layout = QVBoxLayout(self)
         layout.addWidget(
@@ -51,6 +71,9 @@ class Rips3374LoadDialog(QDialog):
         self.rb_zip = QRadioButton("Archivo ZIP con todos los .txt")
         self.rb_folder = QRadioButton("Carpeta con archivos .txt")
         self.rb_zip.setChecked(True)
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.addButton(self.rb_zip)
+        self._mode_group.addButton(self.rb_folder)
         mode_row.addWidget(self.rb_zip)
         mode_row.addWidget(self.rb_folder)
         mode_row.addStretch()
@@ -67,13 +90,19 @@ class Rips3374LoadDialog(QDialog):
         folder_box = QGroupBox("Carpeta de archivos .txt")
         folder_layout = QVBoxLayout(folder_box)
         folder_row = QHBoxLayout()
-        self.folder_edit = QLineEdit(str(self._folder))
+        self.folder_edit = QLineEdit()
+        self.folder_edit.setPlaceholderText(
+            "Pulse «Examinar carpeta…» (ej. D:\\rips\\…\\9959) — no use su carpeta de usuario."
+        )
         self.btn_folder = QPushButton("Examinar carpeta…")
         self.btn_folder.setToolTip(
-            "Al elegir carpeta se listan aquí los .txt RIPS encontrados antes de confirmar."
+            "Elija la carpeta de la remisión; luego se listan los CT/AF/US… sin bloquear la ventana."
         )
+        self.btn_refresh = QPushButton("Volver a listar")
+        self.btn_refresh.setToolTip("Vuelve a buscar archivos en la ruta mostrada arriba.")
         folder_row.addWidget(self.folder_edit, stretch=1)
         folder_row.addWidget(self.btn_folder)
+        folder_row.addWidget(self.btn_refresh)
         folder_layout.addLayout(folder_row)
         layout.addWidget(folder_box)
 
@@ -82,54 +111,79 @@ class Rips3374LoadDialog(QDialog):
         self.lbl_info = QLabel("")
         layout.addWidget(self.lbl_info)
 
-        buttons = QDialogButtonBox(
+        self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self._on_accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self._buttons.accepted.connect(self._on_accept)
+        self._buttons.rejected.connect(self.reject)
+        layout.addWidget(self._buttons)
 
         self.rb_zip.toggled.connect(self._sync_mode)
         self.btn_zip.clicked.connect(self._browse_zip)
         self.btn_folder.clicked.connect(self._browse_folder)
-        self.folder_edit.editingFinished.connect(self._reload_folder_list)
+        self.btn_refresh.clicked.connect(self._reload_folder_list)
         self._sync_mode()
+
+    def _set_busy(self, busy: bool) -> None:
+        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(not busy)
+        self.rb_zip.setEnabled(not busy)
+        self.rb_folder.setEnabled(not busy)
+        self.btn_zip.setEnabled(not busy and self._mode_zip)
+        self.btn_folder.setEnabled(not busy and not self._mode_zip)
+        self.btn_refresh.setEnabled(not busy and not self._mode_zip)
+        self.folder_edit.setEnabled(not busy and not self._mode_zip)
 
     def _sync_mode(self) -> None:
         self._mode_zip = self.rb_zip.isChecked()
         self.zip_edit.setEnabled(self._mode_zip)
         self.btn_zip.setEnabled(self._mode_zip)
-        self.folder_edit.setEnabled(not self._mode_zip)
-        self.btn_folder.setEnabled(not self._mode_zip)
+        folder_on = not self._mode_zip
+        self.folder_edit.setEnabled(folder_on)
+        self.btn_folder.setEnabled(folder_on)
+        self.btn_refresh.setEnabled(folder_on)
         if self._mode_zip:
+            self._cancel_scan()
             if self._zip_path:
                 self._show_zip_preview()
             else:
                 self.list_widget.clear()
-                self.lbl_info.setText("Seleccione un ZIP o active «Carpeta con archivos .txt».")
+                self.lbl_info.setText("Seleccione un ZIP o elija «Carpeta con archivos .txt».")
         else:
-            self._reload_folder_list()
+            self.list_widget.clear()
+            self.lbl_info.setText(
+                "Modo carpeta: pulse «Examinar carpeta…» y seleccione la remisión "
+                "(carpeta con CT9959.txt, AF9959.txt, …)."
+            )
+
+    def _cancel_scan(self) -> None:
+        if self._scan_thread and self._scan_thread.isRunning():
+            self._scan_thread.requestInterruption()
+            self._scan_thread.wait(2000)
+        self._scan_thread = None
+        self._set_busy(False)
 
     def _browse_zip(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Seleccionar ZIP RIPS",
-            str(self._folder),
+            self._browse_start,
             "ZIP (*.zip)",
         )
         if path:
             self._zip_path = Path(path)
             self.zip_edit.setText(path)
+            self._browse_start = str(Path(path).parent)
             self._show_zip_preview()
 
     def _browse_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(
             self,
-            "Seleccionar carpeta — revise los .txt listados antes de Aceptar",
-            self.folder_edit.text() or str(self._folder),
+            "Seleccionar carpeta de la remisión RIPS (CTxxxx.txt)",
+            self.folder_edit.text().strip() or self._browse_start,
         )
         if path:
             self.folder_edit.setText(path)
+            self._browse_start = path
             self._reload_folder_list()
 
     def _show_zip_preview(self) -> None:
@@ -168,6 +222,7 @@ class Rips3374LoadDialog(QDialog):
     def _reload_folder_list(self) -> None:
         if self._mode_zip:
             return
+        self._cancel_scan()
         self.list_widget.clear()
         folder = normalize_folder_path(self.folder_edit.text())
         if folder is None or not folder.is_dir():
@@ -175,9 +230,28 @@ class Rips3374LoadDialog(QDialog):
                 f"No se puede abrir la carpeta:\n{self.folder_edit.text().strip()}"
             )
             return
-        self._folder = folder
+        warn = scan_folder_warning(folder)
+        if warn:
+            self.lbl_info.setText(warn)
+            return
+        self._scanned_folder = folder
         self.folder_edit.setText(str(folder))
-        paths = list_txt_in_folder_for_preview(folder)
+        self.lbl_info.setText(f"Buscando archivos RIPS en:\n{folder}\n(un momento…)")
+        self._set_busy(True)
+        self._scan_thread = _FolderScanThread(folder)
+        self._scan_thread.done.connect(self._on_scan_done)
+        self._scan_thread.error.connect(self._on_scan_error)
+        self._scan_thread.finished.connect(lambda: self._set_busy(False))
+        self._scan_thread.start()
+
+    def _on_scan_error(self, message: str) -> None:
+        self.lbl_info.setText(f"Error al listar carpeta:\n{message}")
+
+    def _on_scan_done(self, path_strs: list[str]) -> None:
+        folder = self._scanned_folder
+        if folder is None:
+            return
+        paths = [Path(p) for p in path_strs]
         recognized = 0
         for path in paths:
             ftype = file_type_from_name(path.name)
@@ -195,14 +269,12 @@ class Rips3374LoadDialog(QDialog):
             self.list_widget.addItem(item)
         if not paths:
             self.lbl_info.setText(
-                f"No se encontraron archivos CT/AF/US… (.txt o sin extensión) "
-                f"bajo:\n{folder}\n"
-                "Compruebe que eligió la carpeta de la remisión (ej. …\\9959) "
-                "o un nivel superior que contenga esas carpetas."
+                f"No se encontraron archivos CT/AF/US… bajo:\n{folder}\n"
+                "Compruebe que eligió la carpeta correcta (ej. …\\9959)."
             )
         elif recognized == 0:
             self.lbl_info.setText(
-                f"{len(paths)} archivo(s) .txt sin nombre RIPS (deben empezar por CT, AF, US, …)."
+                f"{len(paths)} archivo(s) sin nombre RIPS (deben empezar por CT, AF, US, …)."
             )
         else:
             types = sorted(
@@ -212,7 +284,14 @@ class Rips3374LoadDialog(QDialog):
                 f"Raíz: {folder} | Archivos RIPS: {recognized} | Tipos: {', '.join(types)}"
             )
 
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self._cancel_scan()
+        super().closeEvent(event)
+
     def _on_accept(self) -> None:
+        if self._scan_thread and self._scan_thread.isRunning():
+            self.lbl_info.setText("Espere a que termine de listar la carpeta.")
+            return
         if self._mode_zip:
             if not self._zip_path or not self._zip_path.is_file():
                 self.lbl_info.setText("Debe seleccionar un ZIP válido.")
@@ -222,7 +301,9 @@ class Rips3374LoadDialog(QDialog):
                 return
         else:
             if self.list_widget.count() == 0:
-                self.lbl_info.setText("No hay archivos para cargar. Cambie de carpeta.")
+                self.lbl_info.setText(
+                    "Pulse «Examinar carpeta…», elija la remisión y espere la lista."
+                )
                 return
             if not any(
                 self.list_widget.item(i).checkState() == Qt.CheckState.Checked

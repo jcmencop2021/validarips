@@ -7,7 +7,39 @@ from pathlib import Path
 
 from core.rips_3374.constants import RIPS_TXT_TYPES
 
-_SKIP_DIR_NAMES = frozenset({".git", "__pycache__", "node_modules", ".venv", "venv"})
+_SKIP_DIR_NAMES = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        "AppData",
+        "Application Data",
+        "Local Settings",
+        "Cookies",
+        "Recent",
+        "OneDrive",
+        "Program Files",
+        "Program Files (x86)",
+        "ProgramData",
+        "Windows",
+        "$Recycle.Bin",
+        "System Volume Information",
+        ".cursor",
+        "Packages",
+        "Microsoft",
+        "Google",
+        "Mozilla",
+        "Intel",
+        "AMD",
+        "NVIDIA",
+        "Temp",
+        "tmp",
+    }
+)
+
+_MAX_RIPS_FILES_PER_SCAN = 2500
 
 
 def split_rips_line(line: str) -> list[str]:
@@ -61,7 +93,30 @@ def _is_rips_txt_file(path: Path) -> bool:
     return False
 
 
-def discover_txt_files_in_tree(root: Path, *, max_depth: int = 12) -> list[Path]:
+def scan_folder_warning(folder: Path) -> str | None:
+    """Evita escanear rutas enormes (perfil de usuario, unidad entera)."""
+    try:
+        r = folder.resolve()
+    except OSError:
+        return "Ruta de carpeta no válida."
+    try:
+        home = Path.home().resolve()
+    except OSError:
+        home = None
+    if home is not None and r == home:
+        return (
+            "No se puede listar toda su carpeta de usuario.\n"
+            "Pulse «Examinar carpeta…» y elija la carpeta de la remisión "
+            "(ej. D:\\rips\\…\\9959)."
+        )
+    if len(r.parts) <= 1:
+        return "Seleccione una carpeta concreta (no la unidad raíz)."
+    if home is not None and r.parent == home.parent and r.name.lower() == "users":
+        return "Seleccione la carpeta de su remisión RIPS, no C:\\Users."
+    return None
+
+
+def discover_txt_files_in_tree(root: Path, *, max_depth: int = 8) -> list[Path]:
     """
     Busca archivos RIPS planos bajo la carpeta elegida (recursivo).
     Nombres habituales: CT9959.txt, AF9959.TXT o CT9959 sin extensión.
@@ -83,7 +138,7 @@ def discover_txt_files_in_tree(root: Path, *, max_depth: int = 12) -> list[Path]
         found.append(path)
 
     def walk(directory: Path, depth: int) -> None:
-        if depth > max_depth:
+        if depth > max_depth or len(found) >= _MAX_RIPS_FILES_PER_SCAN:
             return
         try:
             with os.scandir(directory) as it:
