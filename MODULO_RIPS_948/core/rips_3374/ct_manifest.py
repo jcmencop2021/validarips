@@ -88,7 +88,9 @@ def parse_ct_entries(rows: list[list[str]]) -> tuple[list[CtEntry], list[str]]:
 def _stem_matches_codigo(stem: str, codigo_archivo: str) -> bool:
     s = stem.upper()
     code = codigo_archivo.upper()
-    return s == code or s.startswith(code)
+    if not s or not code:
+        return False
+    return s == code or s.startswith(code) or code.startswith(s)
 
 
 def package_file_for_ct_code(

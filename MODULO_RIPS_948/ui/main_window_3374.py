@@ -152,6 +152,14 @@ class MainWindow3374(MainWindow948):
                 self.validation_report.status_label,
                 "Resultado RIPS 3374",
             )
+        except Exception as exc:  # noqa: BLE001 — mostrar fallo al usuario
+            QMessageBox.critical(
+                self,
+                "Error al validar",
+                f"La validación no pudo completarse:\n{exc}\n\n"
+                "Si el problema continúa, use «Ver resultado / errores» tras cargar de nuevo.",
+            )
+            self.txt_validacion.setPlainText(f"Error al validar:\n{exc}")
         finally:
             self.btn_validar.setEnabled(True)
             self.btn_validar.setText(prev)

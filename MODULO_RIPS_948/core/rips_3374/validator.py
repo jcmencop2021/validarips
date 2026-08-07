@@ -24,6 +24,7 @@ from core.rips_3374.ct_manifest import (
     CtEntry,
     package_file_for_ct_code,
     parse_ct_entries,
+    _stem_matches_codigo,
 )
 from core.rips_3374.records import build_records_from_package
 from core.rips_3374.txt_parser import Rips3374Package, remision_from_filename
@@ -53,11 +54,11 @@ def _field(row: list[str], idx: int) -> str:
 def _service_valor_for_validation(row: list[str], stype: str) -> Decimal | None:
     idx = SVC_VALOR_IDX.get(stype, 14)
     val = _parse_money(_field(row, idx))
-    if val > 0:
+    if val is not None and val > 0:
         return val
     for part in reversed(row):
         v = _parse_money(part)
-        if v > 0:
+        if v is not None and v > 0:
             return v
     if _field(row, idx) == "":
         return Decimal("0")
@@ -120,9 +121,7 @@ def _validate_ct_manifest(pkg: Rips3374Package, report: ValidationReport) -> lis
             continue
         name = path.name if hasattr(path, "name") else str(path)
         stem = Path(name).stem.upper()
-        matched = any(
-            stem == code or stem.startswith(code) for code in listed_codes
-        )
+        matched = any(_stem_matches_codigo(stem, code) for code in listed_codes)
         if not matched:
             report.messages.append(
                 ValidationMessage(

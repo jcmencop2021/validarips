@@ -600,6 +600,13 @@ class MainWindow948(QMainWindow):
                 self.validation_report.status_label,
                 "Resultado RIPS",
             )
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self,
+                "Error al validar",
+                f"La validación no pudo completarse:\n{exc}",
+            )
+            self.txt_validacion.setPlainText(f"Error al validar:\n{exc}")
         finally:
             self.btn_validar.setEnabled(True)
             self.btn_validar.setText(prev_label)
