@@ -1,0 +1,46 @@
+================================================================================
+  PLANTILLA RELEASE — Modulo RIPS (validarips)
+  Sustituir VERSION (ej. 1.2.8) y el texto de novedades antes de publicar.
+================================================================================
+
+TITULO RELEASE EN GITHUB
+  Modulo RIPS vVERSION
+
+ARCHIVOS A SUBIR (siempre los tres)
+  1. MODULORIPS_vVERSION_Windows_completo.zip  — exe + fuente MODULO_RIPS_948 + leeme
+  2. ModuloRIPS948.exe                           — solo ejecutable Windows
+  3. MODULO_RIPS_948_vVERSION.zip                — solo carpeta fuente (Python)
+
+ENLACE PRINCIPAL
+  https://github.com/jcmencop2021/validarips/releases/tag/vVERSION
+
+CUERPO DEL RELEASE (copiar a GitHub y al chat con el usuario)
+--------------------------------------------------------------------------------
+## Descarga
+
+| Archivo | Para quién |
+|---------|------------|
+| [MODULORIPS_vVERSION_Windows_completo.zip](https://github.com/jcmencop2021/validarips/releases/download/vVERSION/MODULORIPS_vVERSION_Windows_completo.zip) | Recomendado: exe + código + instrucciones |
+| [ModuloRIPS948.exe](https://github.com/jcmencop2021/validarips/releases/download/vVERSION/ModuloRIPS948.exe) | Solo Windows, sin Python |
+| [MODULO_RIPS_948_vVERSION.zip](https://github.com/jcmencop2021/validarips/releases/download/vVERSION/MODULO_RIPS_948_vVERSION.zip) | Actualizar solo carpeta Python |
+
+**Release:** https://github.com/jcmencop2021/validarips/releases/tag/vVERSION
+
+### Windows (exe)
+1. Descargue el **completo** o solo **ModuloRIPS948.exe**.
+2. Extraiga si es ZIP; doble clic en `ModuloRIPS948.exe`.
+3. En la app, cartel naranja: **VERSION VERSION** o superior.
+
+### Windows (Python)
+1. Extraiga `MODULO_RIPS_948_vVERSION.zip` en su carpeta de trabajo.
+2. `python -m pip install -r requirements.txt`
+3. `python scripts\init_template.py` y luego `python app.py`.
+
+Novedad vVERSION: <resumen corto>.
+
+Instrucciones amplias: `COMO_DESCARGAR.txt` en la raíz del repo.
+--------------------------------------------------------------------------------
+
+DESPUES DE PUBLICAR
+  - Actualizar COMO_DESCARGAR.txt (OPCION 0: tag, nombres de archivos, novedad, release anterior).
+  - Verificar que los 3 assets aparecen en la release de GitHub.
