@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -78,11 +79,18 @@ ADMIN_FIELD_WIDTH: dict[str, int] = {
 }
 
 
+class SessionEndReason(Enum):
+    HOME = "home"
+    EXIT = "exit"
+
+
 class MainWindow948(QMainWindow):
     COL_EXPORT = 0
+    session_ended = Signal(object)  # SessionEndReason
 
     def __init__(self) -> None:
         super().__init__()
+        self._closing_for_home = False
         self._app_version = get_version()
         self.setWindowTitle(f"Módulo RIPS — Relación Res. 948 — v{self._app_version}")
         self.resize(1320, 860)
@@ -114,6 +122,13 @@ class MainWindow948(QMainWindow):
         layout.addWidget(self.lbl_version_banner)
 
         btn_row = QHBoxLayout()
+        self.btn_inicio = QPushButton("Cambiar normativa (inicio)")
+        self.btn_inicio.setToolTip(
+            "Vuelve a la pantalla inicial para elegir Resolución 948 (JSON) o 3374 (TXT/ZIP) "
+            "sin cerrar el programa."
+        )
+        self.btn_inicio.setStyleSheet("font-weight: bold;")
+        btn_row.addWidget(self.btn_inicio)
         self.btn_buscar = QPushButton("Buscar RIPS (JSON)")
         self.btn_carpeta = QPushButton("Buscar carpeta")
         self.btn_factura = QPushButton("Cargar datos factura")
@@ -165,6 +180,7 @@ class MainWindow948(QMainWindow):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
+        self.btn_inicio.clicked.connect(self.on_volver_pantalla_inicio)
         self.btn_buscar.clicked.connect(self.on_buscar_archivos)
         self.btn_carpeta.clicked.connect(self.on_buscar_carpeta)
         self.btn_factura.clicked.connect(self.on_cargar_facturas)
@@ -298,6 +314,40 @@ class MainWindow948(QMainWindow):
         if hasattr(self, "_main_splitter"):
             total = sum(self._main_splitter.sizes()) or 900
             self._main_splitter.setSizes([int(total * 0.52), int(total * 0.48)])
+
+    def on_volver_pantalla_inicio(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Cambiar normativa",
+            "¿Volver a la pantalla inicial?\n\n"
+            "Podrá elegir de nuevo Resolución 948 (JSON) o 3374 (TXT/ZIP). "
+            "Los datos cargados en esta ventana no se guardan automáticamente.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._closing_for_home = True
+        self.session_ended.emit(SessionEndReason.HOME)
+        self.close()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        if self._closing_for_home:
+            super().closeEvent(event)
+            return
+        reply = QMessageBox.question(
+            self,
+            "Cerrar programa",
+            "¿Salir del Módulo RIPS?\n\n"
+            "Use «Cambiar normativa (inicio)» si desea pasar a 948 o 3374 sin salir.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.session_ended.emit(SessionEndReason.EXIT)
+            super().closeEvent(event)
+        else:
+            event.ignore()
 
     def _admin_values(self) -> dict[str, str]:
         values: dict[str, str] = {}

@@ -32,7 +32,9 @@ class ModeSelectorDialog(QDialog):
                 "<b>Seleccione el tipo de RIPS a procesar:</b><br><br>"
                 "• <b>Resolución 948 (2026)</b> — archivos JSON + relación Excel + FEV.<br>"
                 "• <b>Resolución 3374 (2000)</b> — archivos planos .txt o ZIP "
-                "(CT, AF, US, AC, AP, AM, AT, etc.)."
+                "(CT, AF, US, AC, AP, AM, AT, etc.).<br><br>"
+                "En cualquier modo puede usar <b>Cambiar normativa (inicio)</b> "
+                "para volver aquí sin cerrar el programa."
             )
         )
 
