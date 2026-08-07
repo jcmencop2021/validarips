@@ -5,7 +5,7 @@ from pathlib import Path
 
 from core.paths import config_path
 
-BUILD_ID = "2026-08-07-003"
+BUILD_ID = "2026-08-07-004"
 
 
 def get_version() -> str:

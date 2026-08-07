@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStyle,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
@@ -46,6 +47,7 @@ from ui.date_delegate import GRID_DATE_COLUMNS, DateLineDelegate
 from ui.factura_select_dialog import FacturaSelectDialog
 from ui.json_select_dialog import RipsFolderDialog
 from ui.relation_table import RelationTable
+from ui.qt_icons import decorate_button
 
 APP_ROOT = get_module_root()
 
@@ -122,10 +124,14 @@ class MainWindow948(QMainWindow):
         layout.addWidget(self.lbl_version_banner)
 
         btn_row = QHBoxLayout()
-        self.btn_inicio = QPushButton("Cambiar normativa (inicio)")
+        self.btn_inicio = QPushButton("Menú principal")
         self.btn_inicio.setToolTip(
-            "Vuelve a la pantalla inicial para elegir Resolución 948 (JSON) o 3374 (TXT/ZIP) "
-            "sin cerrar el programa."
+            "Vuelve al menú lateral para elegir Resolución 948 (JSON) o 3374 (TXT/ZIP)."
+        )
+        decorate_button(
+            self.btn_inicio,
+            QStyle.StandardPixmap.SP_ArrowBack,
+            self.btn_inicio.toolTip(),
         )
         self.btn_inicio.setStyleSheet("font-weight: bold;")
         btn_row.addWidget(self.btn_inicio)
@@ -164,6 +170,16 @@ class MainWindow948(QMainWindow):
                 "Guarda el informe de validación RIPS en un archivo de texto (.txt)."
             ),
         }
+        _icon_map = {
+            self.btn_buscar: QStyle.StandardPixmap.SP_DialogOpenButton,
+            self.btn_carpeta: QStyle.StandardPixmap.SP_DirIcon,
+            self.btn_factura: QStyle.StandardPixmap.SP_FileLinkIcon,
+            self.btn_prestadores: QStyle.StandardPixmap.SP_FileDialogListView,
+            self.btn_validar: QStyle.StandardPixmap.SP_DialogApplyButton,
+            self.btn_ver_informe: QStyle.StandardPixmap.SP_MessageBoxInformation,
+            self.btn_exportar: QStyle.StandardPixmap.SP_DialogSaveButton,
+            self.btn_descargar: QStyle.StandardPixmap.SP_ArrowDown,
+        }
         for btn in (
             self.btn_buscar,
             self.btn_carpeta,
@@ -177,6 +193,8 @@ class MainWindow948(QMainWindow):
             btn_row.addWidget(btn)
         for btn, tip in self._tooltips.items():
             btn.setToolTip(tip)
+            if btn in _icon_map:
+                decorate_button(btn, _icon_map[btn], tip)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -191,6 +209,10 @@ class MainWindow948(QMainWindow):
         self.btn_descargar.clicked.connect(self.on_descargar_informe)
 
         status_box = QGroupBox("Estado")
+        status_box.setToolTip(
+            "Resumen de la carga actual: facturas, registros, valor, filas marcadas para Excel, "
+            "índice FEV y catálogo de prestadores."
+        )
         status_layout = QHBoxLayout(status_box)
         self.lbl_facturas = QLabel("Facturas: 0")
         self.lbl_pacientes = QLabel("Registros: 0")
@@ -214,6 +236,9 @@ class MainWindow948(QMainWindow):
         layout.addWidget(status_box)
 
         header_box = QGroupBox("Datos administrativos (comunes)")
+        header_box.setToolTip(
+            "Valores comunes para todas las filas. Tras completar, use «Aplicar a todos»."
+        )
         header_row = QHBoxLayout(header_box)
         self.admin_inputs: dict[str, QLineEdit] = {}
         labels = {
@@ -223,10 +248,19 @@ class MainWindow948(QMainWindow):
             "FECHA RADICADO": "F. radicado",
             "PERIODO FACTURADO": "Periodo",
         }
+        _admin_tips = {
+            "CAJA": "Código o número de caja de radicación (común a la relación).",
+            "REL": "Número REL de la relación de facturas.",
+            "RADICADO": "Número de radicado ante la entidad.",
+            "FECHA RADICADO": "Fecha de radicado (dd/mm/aaaa).",
+            "PERIODO FACTURADO": "Periodo facturado (ej. 202601).",
+        }
         for field in ADMIN_FIELDS:
             col = QVBoxLayout()
             lbl = QLabel(labels.get(field, field))
+            lbl.setToolTip(_admin_tips.get(field, ""))
             edit = QLineEdit()
+            edit.setToolTip(_admin_tips.get(field, ""))
             w = ADMIN_FIELD_WIDTH.get(field, 88)
             edit.setMaximumWidth(w)
             if field == "FECHA RADICADO":
@@ -243,6 +277,11 @@ class MainWindow948(QMainWindow):
             "las marca con «Aplicar» y las incluye en la exportación a Excel."
         )
         self.btn_aplicar_todos.clicked.connect(self.on_aplicar_todos)
+        decorate_button(
+            self.btn_aplicar_todos,
+            QStyle.StandardPixmap.SP_DialogYesButton,
+            self.btn_aplicar_todos.toolTip(),
+        )
         header_row.addWidget(self.btn_aplicar_todos)
         layout.addWidget(header_box)
 
@@ -318,10 +357,8 @@ class MainWindow948(QMainWindow):
     def on_volver_pantalla_inicio(self) -> None:
         reply = QMessageBox.question(
             self,
-            "Cambiar normativa",
-            "¿Volver a la pantalla inicial?\n\n"
-            "Podrá elegir de nuevo Resolución 948 (JSON) o 3374 (TXT/ZIP). "
-            "Los datos cargados en esta ventana no se guardan automáticamente.",
+            "Menú principal",
+            "¿Volver al menú lateral?\n\nPodrá elegir de nuevo 948 o 3374.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
@@ -329,17 +366,16 @@ class MainWindow948(QMainWindow):
             return
         self._closing_for_home = True
         self.session_ended.emit(SessionEndReason.HOME)
-        self.close()
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        if self._closing_for_home:
-            super().closeEvent(event)
+        if self.parent() is not None and not self.isWindow():
+            event.ignore()
             return
         reply = QMessageBox.question(
             self,
             "Cerrar programa",
             "¿Salir del Módulo RIPS?\n\n"
-            "Use «Cambiar normativa (inicio)» si desea pasar a 948 o 3374 sin salir.",
+            "Use «Menú principal» en la barra lateral o en la herramienta si desea cambiar de normativa.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

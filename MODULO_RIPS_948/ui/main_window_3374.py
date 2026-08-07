@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox, QStyle
 
 from core.date_fmt import format_date_display
 from core.rips_3374.records import build_records_from_package
@@ -8,6 +8,7 @@ from core.rips_3374.txt_parser import load_from_txt_paths, load_from_zip
 from core.rips_3374.validator import validate_package, validation_summary_3374
 from core.validator import Severity
 from ui.main_window import MainWindow948
+from ui.qt_icons import decorate_button
 from ui.rips_3374_load_dialog import Rips3374LoadDialog
 from ui.validation_report_dialog import ValidationReportDialog
 
@@ -24,9 +25,11 @@ class MainWindow3374(MainWindow948):
         self.package = None
         self.btn_carpeta.setVisible(False)
         self.btn_buscar.setText("Buscar archivos RIPS (TXT / ZIP)")
-        self.btn_buscar.setToolTip(
+        decorate_button(
+            self.btn_buscar,
+            QStyle.StandardPixmap.SP_DialogOpenButton,
             "Abre el selector de ZIP o carpeta con archivos .txt (CT, AF, US, AC, AP, …). "
-            "Muestra los archivos encontrados antes de confirmar."
+            "Muestra los archivos encontrados antes de confirmar.",
         )
         self.btn_validar.setToolTip(
             "Valida el manifiesto CT (archivos del paquete y cantidad de registros), "
@@ -60,6 +63,7 @@ class MainWindow3374(MainWindow948):
         lay = row.layout()
         btn = type(after)(text)
         btn.setToolTip(tooltip)
+        decorate_button(btn, QStyle.StandardPixmap.SP_MessageBoxCritical, tooltip)
         idx = lay.indexOf(after)
         lay.insertWidget(idx + 1, btn)
         return btn
